@@ -84,8 +84,21 @@
     /* Clip editor layout */
     .clip-layout { flex: 1; display: grid; grid-template-columns: 380px 1fr; overflow: hidden; }
     .clip-left { display: flex; flex-direction: column; border-right: 1px solid var(--border); background: var(--surface); overflow: hidden; }
-    .video-player-wrap { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
-    .video-el { width: 100%; border-radius: 8px; background: #000; display: block; max-height: 240px; object-fit: contain; }
+    .video-player-wrap { padding: 16px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+    .video-stage {
+      position: relative; margin: 0 auto; background: #000; border-radius: 8px;
+      overflow: hidden; max-width: 100%;
+    }
+    .video-el { width: 100%; height: 100%; background: #000; display: block; object-fit: cover; object-position: 50% 50%; }
+    .video-stage.reframeable { cursor: grab; touch-action: none; }
+    .video-stage.reframeable.dragging { cursor: grabbing; }
+    .frame-hint { font-size: 11px; color: var(--text-dim); text-align: center; line-height: 1.4; min-height: 15px; width: 100%; }
+    .frame-hint.active { color: var(--text-muted); }
+    .frame-zoom { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+    .frame-zoom label { font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; }
+    .frame-zoom input[type="range"] { width: 100%; accent-color: var(--purple); }
+    .frame-controls { display: none; flex-direction: column; gap: 8px; width: 100%; }
+    .frame-controls.visible { display: flex; }
     .player-controls { display: flex; align-items: center; gap: 10px; }
     .play-btn { width: 32px; height: 32px; border-radius: 50%; background: var(--purple); border: none; color: #fff; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .seek-bar { flex: 1; -webkit-appearance: none; height: 4px; border-radius: 2px; background: var(--border); cursor: pointer; }
@@ -130,6 +143,20 @@
     .word.current { outline: 2px solid var(--yellow); outline-offset: 1px; }
     .word.selecting { background: rgba(96,165,250,0.55) !important; color: #fff !important; box-shadow: inset 0 0 0 2px #60a5fa; }
     .word-space { display: inline; }
+
+    .word-edit-menu {
+      position: fixed; z-index: 250; display: none; flex-direction: column; gap: 8px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); min-width: 220px;
+    }
+    .word-edit-menu.show { display: flex; }
+    .word-edit-menu label { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+    .word-edit-menu input {
+      background: var(--surface-raised); border: 1px solid var(--border); border-radius: 6px;
+      color: var(--text); font-size: 13px; padding: 8px 10px; font-family: inherit; width: 100%;
+    }
+    .word-edit-menu input:focus { outline: none; border-color: var(--purple); }
+    .word-edit-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
     .sel-panel {
       position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
@@ -198,6 +225,26 @@
     .server-badge.ok .dot { background: var(--green); }
     .server-badge.bad { color: #fb923c; border-color: rgba(251,146,60,0.35); background: rgba(251,146,60,0.08); }
     .server-badge.bad .dot { background: #fb923c; }
+
+    /* Output format picker */
+    .format-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .format-option {
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+      padding: 20px 12px; border-radius: 12px;
+      border: 2px solid var(--border); background: var(--surface-raised);
+      cursor: pointer; transition: all 0.15s; font-family: inherit; color: var(--text);
+    }
+    .format-option:hover { border-color: var(--border-hover); }
+    .format-option.selected { border-color: var(--purple); background: var(--purple-dim); box-shadow: 0 0 0 1px rgba(124,58,237,0.25); }
+    .format-preview {
+      background: rgba(255,255,255,0.06); border-radius: 4px;
+      border: 1px solid var(--border-hover); flex-shrink: 0;
+    }
+    .format-preview.landscape { width: 72px; height: 40px; }
+    .format-preview.portrait { width: 40px; height: 72px; }
+    .format-preview.square { width: 52px; height: 52px; }
+    .format-label { font-size: 14px; font-weight: 600; }
+    .format-desc { font-size: 11px; color: var(--text-muted); }
   </style>
 </head>
 <body>
@@ -214,6 +261,7 @@
     <div class="stages" id="stages">
       <button class="stage-btn active" data-stage="upload" onclick="goToStage('upload')"><span class="stage-dot"></span> Upload</button>
       <button class="stage-btn locked" data-stage="transcribe" onclick="goToStage('transcribe')"><span class="stage-dot"></span> Transcribe</button>
+      <button class="stage-btn locked" data-stage="options" onclick="goToStage('options')"><span class="stage-dot"></span> Options</button>
       <button class="stage-btn locked" data-stage="ai" onclick="goToStage('ai')"><span class="stage-dot"></span> AI Clips</button>
       <button class="stage-btn locked" data-stage="clip" onclick="goToStage('clip')"><span class="stage-dot"></span> Mark Clips</button>
       <button class="stage-btn locked" data-stage="export" onclick="goToStage('export')"><span class="stage-dot"></span> Export</button>
@@ -279,7 +327,40 @@
             <button class="btn btn-ghost" onclick="goToStage('upload')">← Back</button>
             <button class="btn btn-primary" id="transcribe-btn" onclick="startTranscription()" style="flex:1">Transcribe with Deepgram</button>
           </div>
-          <button class="btn btn-primary" id="transcribe-next-btn" style="display:none" onclick="goToStage('ai')">Continue →</button>
+          <button class="btn btn-primary" id="transcribe-next-btn" style="display:none" onclick="goToStage('options')">Continue →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Options -->
+    <div class="stage" id="stage-options">
+      <div class="center-panel">
+        <div class="card">
+          <div>
+            <h2>Output format</h2>
+            <p style="margin-top:6px">Choose the aspect ratio for your exported clips. On the next step you can drag each clip in the preview to reposition the crop.</p>
+          </div>
+          <div class="format-options" id="format-options">
+            <button type="button" class="format-option" data-format="16:9" onclick="selectAspectFormat('16:9')">
+              <div class="format-preview landscape"></div>
+              <span class="format-label">16:9</span>
+              <span class="format-desc">Landscape</span>
+            </button>
+            <button type="button" class="format-option" data-format="9:16" onclick="selectAspectFormat('9:16')">
+              <div class="format-preview portrait"></div>
+              <span class="format-label">9:16</span>
+              <span class="format-desc">Portrait</span>
+            </button>
+            <button type="button" class="format-option" data-format="1:1" onclick="selectAspectFormat('1:1')">
+              <div class="format-preview square"></div>
+              <span class="format-label">1:1</span>
+              <span class="format-desc">Square</span>
+            </button>
+          </div>
+          <div style="display:flex;gap:10px">
+            <button class="btn btn-ghost" onclick="goToStage('transcribe')">← Back</button>
+            <button class="btn btn-primary" style="flex:1" onclick="goToStage('ai')">Continue →</button>
+          </div>
         </div>
       </div>
     </div>
@@ -316,7 +397,10 @@
             </div>
             <div style="font-size:11px;color:var(--text-dim)">Note: this replaces any current highlights. You can edit or clear them in the next step.</div>
           </div>
-          <button class="btn btn-ghost" style="width:100%" onclick="goToStage('clip')">Skip to editor →</button>
+          <div style="display:flex;gap:10px;margin-top:4px">
+            <button class="btn btn-ghost" onclick="goToStage('options')">← Back</button>
+            <button class="btn btn-ghost" style="flex:1" onclick="goToStage('clip')">Skip to editor →</button>
+          </div>
         </div>
       </div>
     </div>
@@ -326,9 +410,16 @@
       <div class="clip-layout">
         <div class="clip-left">
           <div class="video-player-wrap">
-            <div class="video-stage" style="position:relative;display:flex;justify-content:center">
+            <div class="video-stage" id="video-stage">
               <video class="video-el" id="video-clip" playsinline></video>
               <div class="caption-preview" id="caption-preview"></div>
+            </div>
+            <div class="frame-hint" id="frame-hint"></div>
+            <div class="frame-controls" id="frame-controls-wrap">
+              <div class="frame-zoom" id="frame-zoom-wrap">
+                <label><span>Clip size</span><span id="frame-zoom-label">Fill</span></label>
+                <input type="range" id="frame-zoom" min="0" max="250" value="100" step="1" oninput="onFrameZoomInput(this.value)">
+              </div>
             </div>
             <div class="player-controls">
               <button class="play-btn" id="play-btn-clip" onclick="togglePlay()">▶</button>
@@ -400,6 +491,15 @@
 </div>
 <div class="toast" id="toast"></div>
 
+<div class="word-edit-menu" id="word-edit-menu" onclick="event.stopPropagation()">
+  <label for="word-edit-input">Edit word</label>
+  <input type="text" id="word-edit-input" autocomplete="off" spellcheck="true">
+  <div class="word-edit-actions">
+    <button type="button" class="btn btn-ghost btn-sm" onclick="closeWordEdit()">Cancel</button>
+    <button type="button" class="btn btn-primary btn-sm" onclick="saveWordEdit()">Save</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="restore-modal">
   <div class="modal-card">
     <h3>Previous edit found</h3>
@@ -439,12 +539,21 @@ const S = {
   pendingStartIdx: -1,
   pendingEndIdx: -1,
   colorCounter: 5,
+  aspectFormat: null, // '16:9' | '9:16' | '1:1'
+  videoWidth: 1920,
+  videoHeight: 1080,
+  fileFingerprint: null,
 };
+
+const MIN_FRAME_ZOOM = 0.1;
+const MAX_FRAME_ZOOM = 2.5;
+const FRAME_DRAG_DEADZONE = 8;
 
 let _lastWordIdx = -1;
 let _useServerTranscribe = false;
 
-const STAGE_ORDER = ['upload', 'transcribe', 'ai', 'clip', 'export'];
+const STAGE_ORDER = ['upload', 'transcribe', 'options', 'ai', 'clip', 'export'];
+const ASPECT_FORMATS = ['16:9', '9:16', '1:1'];
 const SESSION_KEY_PREFIX = 'clip-cutter-';
 
 // ══════════════════════════════════════════════════════
@@ -478,8 +587,92 @@ function getExportFilename(color) {
   return `${slug(getExportName(color))}.mp4`;
 }
 
+function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
+
 function normalizeColors(colors) {
-  return (colors || []).map(c => ({ ...c, exportName: c.exportName || c.name || 'clip', subtitles: !!c.subtitles }));
+  return (colors || []).map(c => ({
+    ...c,
+    exportName: c.exportName || c.name || 'clip',
+    subtitles: !!c.subtitles,
+    frameOffset: {
+      x: clamp(Number(c.frameOffset?.x) || 0, -1, 1),
+      y: clamp(Number(c.frameOffset?.y) || 0, -1, 1),
+    },
+    frameZoom: clampFrameZoom(c.frameZoom ?? 1),
+  }));
+}
+
+function clampFrameZoom(zoom) {
+  const z = Number(zoom);
+  if (!Number.isFinite(z) || z <= 0) return 0;
+  return clamp(z, MIN_FRAME_ZOOM, MAX_FRAME_ZOOM);
+}
+
+function sliderToFrameZoom(val) {
+  const z = Number(val) / 100;
+  if (z <= 0) return 0;
+  return clamp(z, MIN_FRAME_ZOOM, MAX_FRAME_ZOOM);
+}
+
+function frameZoomToSlider(zoom) {
+  const z = Number(zoom) || 0;
+  if (z <= 0) return 0;
+  return Math.round(clamp(z, MIN_FRAME_ZOOM, MAX_FRAME_ZOOM) * 100);
+}
+
+function computeFrameScale(srcW, srcH, tw, th, zoom) {
+  const fitScale = Math.min(tw / srcW, th / srcH);
+  const coverScale = Math.max(tw / srcW, th / srcH);
+  const aspectsMatch = Math.abs((srcW / srcH) - (tw / th)) < 0.02;
+  const z = Number(zoom);
+  if (!Number.isFinite(z) || z <= 0) {
+    return aspectsMatch ? fitScale * MIN_FRAME_ZOOM : fitScale;
+  }
+  const zc = clamp(z, MIN_FRAME_ZOOM, MAX_FRAME_ZOOM);
+  if (aspectsMatch) return fitScale * zc;
+  if (zc <= 1) return fitScale + zc * (coverScale - fitScale);
+  return coverScale * zc;
+}
+
+function frameHasCropRoom(zoom) {
+  const srcW = S.videoWidth || 1920;
+  const srcH = S.videoHeight || 1080;
+  const [tw, th] = outputPixelDimensions(currentAspectFormat());
+  const s = computeFrameScale(srcW, srcH, tw, th, zoom);
+  return srcW * s > tw + 0.5 || srcH * s > th + 0.5;
+}
+
+function frameZoomLabel(zoom) {
+  const z = Number(zoom) || 0;
+  if (z <= 0) return 'Smallest (letterbox)';
+  if (z < 0.92) return `Small ${Math.round(z * 100)}%`;
+  if (z > 1.08) return `Zoom ${Math.round(z * 100)}%`;
+  return 'Fill';
+}
+
+function outputPixelDimensions(format) {
+  if (format === '9:16') return [1080, 1920];
+  if (format === '1:1') return [1080, 1080];
+  return [1920, 1080];
+}
+
+function currentAspectFormat() {
+  return ASPECT_FORMATS.includes(S.aspectFormat) ? S.aspectFormat : defaultAspectFormat();
+}
+
+function needsReframe() {
+  const srcW = S.videoWidth || 1920;
+  const srcH = S.videoHeight || 1080;
+  const [tw, th] = outputPixelDimensions(currentAspectFormat());
+  return Math.abs((srcW / srcH) - (tw / th)) > 0.02;
+}
+
+function getActiveColor() {
+  return S.activeColorId ? S.colors.find(c => c.id === S.activeColorId) : null;
+}
+
+function wordText(w) {
+  return w?.punctuated_word || w?.word || '';
 }
 
 // Build one-line caption cues for a clip, on the EXPORT (concatenated) timeline.
@@ -539,10 +732,11 @@ function renderCaptionPNG(text, videoW, videoH) {
 }
 
 function buildCaptionPayload(colorId) {
+  const [w, h] = outputPixelDimensions(currentAspectFormat());
   return buildCaptionsForColor(colorId).map(cue => ({
     start: Math.round(cue.start * 1000) / 1000,
     end: Math.round(cue.end * 1000) / 1000,
-    png: renderCaptionPNG(cue.text, S.videoWidth, S.videoHeight),
+    png: renderCaptionPNG(cue.text, w, h),
   }));
 }
 
@@ -663,13 +857,31 @@ function totalDurationForColor(colorId) {
 // ══════════════════════════════════════════════════════
 // SESSION
 // ══════════════════════════════════════════════════════
-function sessionKey(file) {
-  return `${SESSION_KEY_PREFIX}${file.name}-${file.size}`;
+// Fingerprint from file bytes — name + size alone collide for different videos.
+async function computeFileFingerprint(file) {
+  const SAMPLE = 256 * 1024;
+  const enc = new TextEncoder();
+  const parts = [enc.encode(`${file.name}|${file.size}|${file.lastModified}`)];
+  if (file.size > 0) {
+    parts.push(new Uint8Array(await file.slice(0, Math.min(SAMPLE, file.size)).arrayBuffer()));
+    if (file.size > SAMPLE) {
+      parts.push(new Uint8Array(await file.slice(file.size - SAMPLE, file.size).arrayBuffer()));
+    }
+  }
+  const merged = new Uint8Array(parts.reduce((n, p) => n + p.byteLength, 0));
+  let off = 0;
+  for (const p of parts) { merged.set(p, off); off += p.byteLength; }
+  const hash = await crypto.subtle.digest('SHA-256', merged);
+  return Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function sessionKey(fingerprint) {
+  return `${SESSION_KEY_PREFIX}${fingerprint}`;
 }
 
 function saveSession() {
-  if (!S.videoFile || !S.words.length) return;
-  const key = sessionKey(S.videoFile);
+  if (!S.videoFile || !S.words.length || !S.fileFingerprint) return;
+  const key = sessionKey(S.fileFingerprint);
   const data = {
     words: S.words,
     wordColors: S.wordColors,
@@ -679,17 +891,21 @@ function saveSession() {
     savedAt: Date.now(),
     filename: S.videoFile.name,
     filesize: S.videoFile.size,
+    fileFingerprint: S.fileFingerprint,
     duration: S.videoDuration,
+    aspectFormat: S.aspectFormat,
   };
   try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) { console.warn(e); }
 }
 
 function tryRestoreSession(file) {
   try {
-    const raw = localStorage.getItem(sessionKey(file));
+    if (!S.fileFingerprint) return false;
+    const raw = localStorage.getItem(sessionKey(S.fileFingerprint));
     if (!raw) return false;
     const session = JSON.parse(raw);
     if (!session.words?.length) return false;
+    if (session.fileFingerprint && session.fileFingerprint !== S.fileFingerprint) return false;
     S.words = session.words;
     if (Array.isArray(session.wordColors)) {
       S.wordColors = session.wordColors.map(a => Array.isArray(a) ? a : (a ? [a] : []));
@@ -703,6 +919,7 @@ function tryRestoreSession(file) {
     if (session.colors?.length) S.colors = normalizeColors(session.colors);
     S.activeColorId = session.activeColorId || S.colors[0]?.id;
     S.colorCounter = session.colorCounter ?? S.colors.length;
+    if (ASPECT_FORMATS.includes(session.aspectFormat)) S.aspectFormat = session.aspectFormat;
     document.getElementById('result-words').textContent = `${session.words.length} words (restored)`;
     document.getElementById('result-info').textContent = 'Session restored — no re-transcription needed';
     document.getElementById('transcribe-result').style.display = 'block';
@@ -732,8 +949,9 @@ window.goToStage = function goToStage(name) {
     else if (si < ci) btn.classList.add('done');
     else if (!canAccessStage(s)) btn.classList.add('locked');
   });
+  if (name === 'options') syncOptionsStage();
   if (name === 'ai') resetAiStage();
-  if (name === 'clip') syncVideo();
+  if (name === 'clip') { syncPreviewFormat(); syncVideo(); syncFrameDragState(); }
   if (name === 'export') renderExport();
   closeSelPanel();
 };
@@ -765,12 +983,13 @@ dropZone.addEventListener('drop', e => {
   e.preventDefault();
   dropZone.classList.remove('drag-over');
   const f = e.dataTransfer.files[0];
-  if (f?.type.startsWith('video/')) loadVideoFile(f);
+  if (f?.type.startsWith('video/')) void loadVideoFile(f);
 });
-fileInput.addEventListener('change', e => { if (e.target.files[0]) loadVideoFile(e.target.files[0]); });
+fileInput.addEventListener('change', e => { if (e.target.files[0]) void loadVideoFile(e.target.files[0]); });
 
-function loadVideoFile(file) {
+async function loadVideoFile(file) {
   S.videoFile = file;
+  S.fileFingerprint = await computeFileFingerprint(file);
   S.videoURL = URL.createObjectURL(file);
   const thumb = document.getElementById('thumb-video');
   thumb.src = S.videoURL;
@@ -794,9 +1013,12 @@ function loadVideoFile(file) {
 
 function hasSavedSession(file) {
   try {
-    const raw = localStorage.getItem(sessionKey(file));
+    if (!S.fileFingerprint) return false;
+    const raw = localStorage.getItem(sessionKey(S.fileFingerprint));
     if (!raw) return false;
-    return !!JSON.parse(raw)?.words?.length;
+    const session = JSON.parse(raw);
+    if (session.fileFingerprint && session.fileFingerprint !== S.fileFingerprint) return false;
+    return !!session.words?.length;
   } catch (_) { return false; }
 }
 
@@ -819,12 +1041,12 @@ function promptRestore(file) {
     modal.classList.remove('show');
     if (tryRestoreSession(file)) {
       toast(`Session restored — ${S.words.length} words.`, 'success');
-      goToStage('ai');
+      goToStage('options');
     }
   };
   document.getElementById('restore-modal-fresh').onclick = () => {
     modal.classList.remove('show');
-    localStorage.removeItem(sessionKey(file));
+    if (S.fileFingerprint) localStorage.removeItem(sessionKey(S.fileFingerprint));
     resetEditState();
     toast('Starting a fresh edit — transcribe when ready.', 'success');
   };
@@ -997,7 +1219,189 @@ window.startTranscription = async function startTranscription() {
 // ══════════════════════════════════════════════════════
 // VIDEO PLAYER
 // ══════════════════════════════════════════════════════
+function aspectRatioPair(format) {
+  if (format === '9:16') return [9, 16];
+  if (format === '1:1') return [1, 1];
+  return [16, 9];
+}
+
+function syncPreviewFormat() {
+  const stage = document.getElementById('video-stage');
+  if (!stage) return;
+  const format = currentAspectFormat();
+  const [w, h] = aspectRatioPair(format);
+  stage.style.aspectRatio = `${w} / ${h}`;
+  stage.dataset.format = format;
+  if (format === '16:9') {
+    stage.style.width = '100%';
+    stage.style.maxHeight = '210px';
+  } else {
+    const maxH = format === '9:16' ? 320 : 280;
+    stage.style.maxHeight = `${maxH}px`;
+    stage.style.width = `min(100%, calc(${maxH}px * ${w} / ${h}))`;
+  }
+  applyPreviewFrame();
+}
+
+function applyPreviewFrame() {
+  const vid = document.getElementById('video-clip');
+  if (!vid) return;
+  const color = getActiveColor();
+  const zoom = color?.frameZoom ?? 1;
+  const pan = color?.frameOffset || { x: 0, y: 0 };
+  const srcW = S.videoWidth || 1920;
+  const srcH = S.videoHeight || 1080;
+  const [tw, th] = outputPixelDimensions(currentAspectFormat());
+  const fitScale = Math.min(tw / srcW, th / srcH);
+  const s = computeFrameScale(srcW, srcH, tw, th, zoom);
+  const displayScale = s / fitScale;
+  const hasCrop = frameHasCropRoom(zoom);
+
+  vid.style.objectFit = 'contain';
+  vid.style.width = '100%';
+  vid.style.height = '100%';
+  vid.style.objectPosition = '50% 50%';
+  const panX = hasCrop ? -pan.x * 50 * (displayScale - 1) : 0;
+  const panY = hasCrop ? -pan.y * 50 * (displayScale - 1) : 0;
+  vid.style.transform = `translate(${panX}%, ${panY}%) scale(${displayScale})`;
+  vid.style.transformOrigin = 'center center';
+}
+
+function applyAxisDeadzone(delta) {
+  return Math.abs(delta) < FRAME_DRAG_DEADZONE ? 0 : delta;
+}
+
+function syncFrameZoomSlider() {
+  const wrap = document.getElementById('frame-controls-wrap');
+  const slider = document.getElementById('frame-zoom');
+  const label = document.getElementById('frame-zoom-label');
+  const color = getActiveColor();
+  if (!wrap || !slider || !label) return;
+  wrap.classList.toggle('visible', !!color);
+  if (!color) return;
+  const zoom = color.frameZoom ?? 1;
+  slider.value = String(frameZoomToSlider(zoom));
+  label.textContent = frameZoomLabel(zoom);
+}
+
+function syncFrameDragState() {
+  const stage = document.getElementById('video-stage');
+  const hint = document.getElementById('frame-hint');
+  if (!stage || !hint) return;
+  const color = getActiveColor();
+  const canPan = !!color && frameHasCropRoom(color.frameZoom ?? 1);
+  stage.classList.toggle('reframeable', canPan);
+  syncFrameZoomSlider();
+  if (!color) {
+    hint.textContent = '';
+    hint.classList.remove('active');
+    return;
+  }
+  const zoom = color.frameZoom ?? 1;
+  const moved = Math.abs(color.frameOffset.x) > 0.01 || Math.abs(color.frameOffset.y) > 0.01;
+  const parts = [`${color.name} clip`];
+  if (zoom < 0.92) parts.push('letterboxed');
+  else if (zoom > 1.08) parts.push('zoomed');
+  if (canPan) parts.push(moved ? 'custom position' : 'drag to reposition');
+  parts.push('scroll or slider to resize', 'double-click to reset');
+  hint.textContent = parts.join(' · ');
+  hint.classList.add('active');
+}
+
+window.onFrameZoomInput = function onFrameZoomInput(val) {
+  const color = getActiveColor();
+  if (!color) return;
+  color.frameZoom = sliderToFrameZoom(val);
+  if (!frameHasCropRoom(color.frameZoom)) color.frameOffset = { x: 0, y: 0 };
+  applyPreviewFrame();
+  syncFrameDragState();
+  saveSession();
+};
+
+let _frameDrag = null;
+
+function onFrameDragStart(e) {
+  const color = getActiveColor();
+  if (!color || !frameHasCropRoom(color.frameZoom ?? 1)) return;
+  const stage = document.getElementById('video-stage');
+  if (!stage || e.button > 0) return;
+  e.preventDefault();
+  _frameDrag = {
+    startX: e.clientX,
+    startY: e.clientY,
+    ox: color.frameOffset.x,
+    oy: color.frameOffset.y,
+    pointerId: e.pointerId,
+  };
+  stage.classList.add('dragging');
+  if (stage.setPointerCapture) stage.setPointerCapture(e.pointerId);
+}
+
+function onFrameDragMove(e) {
+  if (!_frameDrag || e.pointerId !== _frameDrag.pointerId) return;
+  const stage = document.getElementById('video-stage');
+  const color = getActiveColor();
+  if (!stage || !color) return;
+  const rect = stage.getBoundingClientRect();
+  let dx = applyAxisDeadzone(e.clientX - _frameDrag.startX);
+  let dy = applyAxisDeadzone(e.clientY - _frameDrag.startY);
+  color.frameOffset.x = clamp(_frameDrag.ox - (dx / rect.width) * 2, -1, 1);
+  color.frameOffset.y = clamp(_frameDrag.oy - (dy / rect.height) * 2, -1, 1);
+  applyPreviewFrame();
+  syncFrameDragState();
+}
+
+function onFrameDragEnd(e) {
+  if (!_frameDrag || e.pointerId !== _frameDrag.pointerId) return;
+  const stage = document.getElementById('video-stage');
+  stage?.classList.remove('dragging');
+  if (stage?.releasePointerCapture) {
+    try { stage.releasePointerCapture(e.pointerId); } catch (_) {}
+  }
+  _frameDrag = null;
+  saveSession();
+}
+
+function onFrameDragReset(e) {
+  const color = getActiveColor();
+  if (!color) return;
+  color.frameOffset = { x: 0, y: 0 };
+  color.frameZoom = 1;
+  applyPreviewFrame();
+  syncFrameDragState();
+  saveSession();
+  toast(`Reset framing for ${color.name}`, 'success');
+}
+
+function onFrameWheel(e) {
+  const color = getActiveColor();
+  if (!color) return;
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? -0.05 : 0.05;
+  const cur = color.frameZoom ?? 1;
+  const next = cur <= 0 ? MIN_FRAME_ZOOM + delta : cur + delta;
+  color.frameZoom = next <= MIN_FRAME_ZOOM - 0.001 ? 0 : clampFrameZoom(next);
+  if (!frameHasCropRoom(color.frameZoom)) color.frameOffset = { x: 0, y: 0 };
+  applyPreviewFrame();
+  syncFrameDragState();
+  saveSession();
+}
+
+function initFrameDrag() {
+  const stage = document.getElementById('video-stage');
+  if (!stage || stage.dataset.dragInit) return;
+  stage.dataset.dragInit = '1';
+  stage.addEventListener('pointerdown', onFrameDragStart);
+  stage.addEventListener('pointermove', onFrameDragMove);
+  stage.addEventListener('pointerup', onFrameDragEnd);
+  stage.addEventListener('pointercancel', onFrameDragEnd);
+  stage.addEventListener('dblclick', onFrameDragReset);
+  stage.addEventListener('wheel', onFrameWheel, { passive: false });
+}
+
 function syncVideo() {
+  syncPreviewFormat();
+  initFrameDrag();
   const vid = document.getElementById('video-clip');
   if (!S.videoURL) return;
   if (vid.src !== S.videoURL) vid.src = S.videoURL;
@@ -1079,6 +1483,8 @@ function applyTranscriptGlow() {
 window.setActiveColor = function setActiveColor(id) {
   S.activeColorId = id;
   renderColorChips();
+  applyPreviewFrame();
+  syncFrameDragState();
 };
 
 window.addColor = function addColor() {
@@ -1086,7 +1492,7 @@ window.addColor = function addColor() {
   const hue = (S.colorCounter * 137.508) % 360;
   const hex = hslToHex(hue, 70, 58);
   const name = `color-${S.colorCounter}`;
-  S.colors.push({ id: uid(), name, exportName: name, hex });
+  S.colors.push({ id: uid(), name, exportName: name, hex, frameOffset: { x: 0, y: 0 }, frameZoom: 1 });
   S.activeColorId = S.colors[S.colors.length - 1].id;
   renderColorChips();
   saveSession();
@@ -1104,6 +1510,43 @@ function hslToHex(h, s, l) {
 // ══════════════════════════════════════════════════════
 // TRANSCRIPT
 // ══════════════════════════════════════════════════════
+let _wordEditIdx = -1;
+
+function showWordEditor(e, idx) {
+  e.preventDefault();
+  e.stopPropagation();
+  closeSelPanel();
+  closeWordEdit();
+  _wordEditIdx = idx;
+  const menu = document.getElementById('word-edit-menu');
+  const input = document.getElementById('word-edit-input');
+  input.value = wordText(S.words[idx]);
+  menu.style.left = `${Math.min(e.clientX, window.innerWidth - 240)}px`;
+  menu.style.top = `${Math.min(e.clientY, window.innerHeight - 120)}px`;
+  menu.classList.add('show');
+  requestAnimationFrame(() => { input.focus(); input.select(); });
+}
+
+window.closeWordEdit = function closeWordEdit() {
+  _wordEditIdx = -1;
+  document.getElementById('word-edit-menu')?.classList.remove('show');
+};
+
+window.saveWordEdit = function saveWordEdit() {
+  if (_wordEditIdx < 0) return;
+  const val = document.getElementById('word-edit-input').value.trim();
+  if (!val) { toast('Word cannot be empty', 'error'); return; }
+  const w = S.words[_wordEditIdx];
+  w.punctuated_word = val;
+  w.word = val.replace(/[^\w'-]/g, '').toLowerCase() || val;
+  const el = document.querySelector(`#transcript-clip .word[data-idx="${_wordEditIdx}"]`);
+  if (el) el.textContent = val;
+  invalidatePreviewCaptions();
+  saveSession();
+  closeWordEdit();
+  toast('Word updated', 'success');
+};
+
 function renderTranscript() {
   const container = document.getElementById('transcript-clip');
   container.innerHTML = '';
@@ -1111,9 +1554,14 @@ function renderTranscript() {
     const span = document.createElement('span');
     span.className = 'word';
     span.dataset.idx = i;
-    span.textContent = w.punctuated_word || w.word;
+    span.textContent = wordText(w);
     applyWordStyle(span, i);
-    span.addEventListener('mousedown', e => { e.preventDefault(); startDrag(i); });
+    span.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      startDrag(i);
+    });
+    span.addEventListener('contextmenu', e => showWordEditor(e, i));
     span.addEventListener('mouseover', () => { if (S.isDragging) continueDrag(i); });
     span.addEventListener('mouseup', () => { if (S.isDragging) endDrag(); });
     span.addEventListener('click', () => {
@@ -1320,6 +1768,34 @@ window.clearAllHighlights = function clearAllHighlights() {
 };
 
 // ══════════════════════════════════════════════════════
+// OUTPUT FORMAT OPTIONS
+// ══════════════════════════════════════════════════════
+function defaultAspectFormat() {
+  const w = S.videoWidth || 1920;
+  const h = S.videoHeight || 1080;
+  const ratio = w / h;
+  if (ratio < 0.85) return '9:16';
+  if (ratio > 1.15) return '16:9';
+  return '1:1';
+}
+
+function syncOptionsStage() {
+  if (!ASPECT_FORMATS.includes(S.aspectFormat)) S.aspectFormat = defaultAspectFormat();
+  document.querySelectorAll('.format-option').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.format === S.aspectFormat);
+  });
+}
+
+window.selectAspectFormat = function selectAspectFormat(format) {
+  if (!ASPECT_FORMATS.includes(format)) return;
+  S.aspectFormat = format;
+  syncOptionsStage();
+  syncPreviewFormat();
+  syncFrameDragState();
+  saveSession();
+};
+
+// ══════════════════════════════════════════════════════
 // AI AUTO-CLIPS (OpenRouter)
 // ══════════════════════════════════════════════════════
 function resetAiStage() {
@@ -1427,7 +1903,7 @@ function applyAiClips(clips, units) {
     if (!color) {
       S.colorCounter++;
       const hue = (S.colorCounter * 137.508) % 360;
-      color = { id: uid(), name: `color-${S.colorCounter}`, exportName: '', hex: hslToHex(hue, 70, 58) };
+      color = { id: uid(), name: `color-${S.colorCounter}`, exportName: '', hex: hslToHex(hue, 70, 58), frameOffset: { x: 0, y: 0 }, frameZoom: 1 };
       S.colors.push(color);
     }
     color.exportName = (clip.name || color.name || `clip-${ci + 1}`).trim();
@@ -1563,13 +2039,18 @@ function buildExportSpec() {
   return {
     version: '1.0',
     videoFile: S.videoFile?.name || 'video.mp4',
+    videoWidth: S.videoWidth,
+    videoHeight: S.videoHeight,
     hasAudio: S.hasAudio,
     generatedAt: new Date().toISOString(),
+    aspectFormat: currentAspectFormat(),
     clips: getColorsInUse().map(c => ({
       colorId: c.id,
       colorName: c.name,
       exportName: getExportName(c),
       filename: getExportFilename(c),
+      frameOffset: c.frameOffset || { x: 0, y: 0 },
+      frameZoom: c.frameZoom ?? 1,
       segments: getColorSegments(c.id).map(s => ({
         start: Math.round(s.start * 1000) / 1000,
         end: Math.round(s.end * 1000) / 1000,
@@ -1694,6 +2175,11 @@ async function exportColorClip(colorId) {
       id,
       outName,
       hasAudio: S.hasAudio,
+      videoWidth: S.videoWidth,
+      videoHeight: S.videoHeight,
+      aspectFormat: currentAspectFormat(),
+      frameOffset: color?.frameOffset || { x: 0, y: 0 },
+      frameZoom: color?.frameZoom ?? 1,
       segments: segments.map(s => ({ start: s.start, end: s.end })),
       captions: color?.subtitles ? buildCaptionPayload(colorId) : null,
     }),
@@ -1757,6 +2243,15 @@ window.buildFfmpegCommands = buildFfmpegCommands;
 if (location.protocol === 'file:') {
   document.getElementById('file-banner').classList.add('visible');
 }
+
+document.getElementById('word-edit-input')?.addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); saveWordEdit(); }
+  if (e.key === 'Escape') closeWordEdit();
+});
+document.addEventListener('click', () => closeWordEdit());
+document.addEventListener('contextmenu', e => {
+  if (!e.target.closest('.word')) closeWordEdit();
+});
 
 checkServerCapabilities();
 renderColorChips();

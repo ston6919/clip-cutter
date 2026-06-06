@@ -164,6 +164,64 @@ function readBody(req) {
 // Uploaded videos are cached server-side by id so "export all" reuses one upload.
 const VIDEO_STORE = new Map(); // id -> { path, dir, name }
 
+function outputDimensions(format) {
+  if (format === '9:16') return [1080, 1920];
+  if (format === '1:1') return [1080, 1080];
+  return [1920, 1080];
+}
+
+function needsReframe(srcW, srcH, format) {
+  if (!format || !srcW || !srcH) return false;
+  const srcAspect = srcW / srcH;
+  const [tw, th] = outputDimensions(format);
+  return Math.abs(srcAspect - tw / th) > 0.02;
+}
+
+function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
+
+// zoom 1 = fill frame; <1 = letterbox; >1 = extra zoom. pan -1..1 when cropped.
+const MIN_FRAME_ZOOM = 0.1;
+
+function computeFrameScale(srcW, srcH, tw, th, zoom) {
+  const fitScale = Math.min(tw / srcW, th / srcH);
+  const coverScale = Math.max(tw / srcW, th / srcH);
+  const aspectsMatch = Math.abs((srcW / srcH) - (tw / th)) < 0.02;
+  const z = Number(zoom);
+  if (!Number.isFinite(z) || z <= 0) {
+    return aspectsMatch ? fitScale * MIN_FRAME_ZOOM : fitScale;
+  }
+  const zc = clamp(z, MIN_FRAME_ZOOM, 2.5);
+  if (aspectsMatch) return fitScale * zc;
+  if (zc <= 1) return fitScale + zc * (coverScale - fitScale);
+  return coverScale * zc;
+}
+
+function needsOutputProcessing(srcW, srcH, format, zoom) {
+  if (!format || !srcW || !srcH) return false;
+  const z = Number(zoom);
+  if (z <= 0 || Math.abs((z || 1) - 1) > 0.01) return true;
+  return needsReframe(srcW, srcH, format);
+}
+
+function even(n) { const v = Math.round(n); return v % 2 ? v + 1 : v; }
+
+function buildReframeFilter(srcW, srcH, format, panX = 0, panY = 0, zoom = 1) {
+  const [tw, th] = outputDimensions(format);
+  const px = clamp(Number(panX) || 0, -1, 1);
+  const py = clamp(Number(panY) || 0, -1, 1);
+  const s = computeFrameScale(srcW, srcH, tw, th, zoom);
+  const sw = even(srcW * s);
+  const sh = even(srcH * s);
+  if (sw <= tw && sh <= th) {
+    const padX = Math.round((tw - sw) / 2);
+    const padY = Math.round((th - sh) / 2);
+    return `scale=${sw}:${sh},pad=${tw}:${th}:${padX}:${padY}:color=black`;
+  }
+  const cropX = Math.round((sw - tw) / 2 + px * (sw - tw) / 2);
+  const cropY = Math.round((sh - th) / 2 + py * (sh - th) / 2);
+  return `scale=${sw}:${sh},crop=${tw}:${th}:${cropX}:${cropY}`;
+}
+
 function runFfmpeg(args, cwd) {
   const r = spawnSync('ffmpeg', args, { encoding: 'utf8', cwd });
   if (r.status !== 0) {
@@ -172,8 +230,13 @@ function runFfmpeg(args, cwd) {
 }
 
 // Cut/concat the selected segments into one clip (no captions).
-function buildExportArgs(videoPath, segments, outPath, hasAudio) {
-  if (segments.length === 1) {
+function buildExportArgs(videoPath, segments, outPath, hasAudio, reframe) {
+  const vf = reframe
+    ? buildReframeFilter(reframe.srcW, reframe.srcH, reframe.format, reframe.panX, reframe.panY, reframe.zoom)
+    : null;
+  const vOut = vf ? '[outv2]' : '[outv]';
+
+  if (segments.length === 1 && !vf) {
     const { start, end } = segments[0];
     const a = ['-y', '-i', videoPath, '-ss', String(start), '-to', String(end),
       '-c:v', 'libx264', '-preset', 'fast', '-crf', '18'];
@@ -181,6 +244,16 @@ function buildExportArgs(videoPath, segments, outPath, hasAudio) {
     a.push(outPath);
     return a;
   }
+
+  if (segments.length === 1 && vf) {
+    const { start, end } = segments[0];
+    const a = ['-y', '-i', videoPath, '-ss', String(start), '-to', String(end),
+      '-vf', vf, '-c:v', 'libx264', '-preset', 'fast', '-crf', '18'];
+    if (hasAudio !== false) a.push('-c:a', 'aac'); else a.push('-an');
+    a.push(outPath);
+    return a;
+  }
+
   const filters = [];
   segments.forEach((s, i) => {
     filters.push(`[0:v]trim=start=${s.start}:end=${s.end},setpts=PTS-STARTPTS[v${i}]`);
@@ -188,14 +261,15 @@ function buildExportArgs(videoPath, segments, outPath, hasAudio) {
   });
   const vcat = segments.map((_, i) => `[v${i}]`).join('');
   filters.push(`${vcat}concat=n=${segments.length}:v=1:a=0[outv]`);
+  if (vf) filters.push(`[outv]${vf}[outv2]`);
   const a = ['-y', '-i', videoPath, '-filter_complex'];
   if (hasAudio !== false) {
     const acat = segments.map((_, i) => `[a${i}]`).join('');
     filters.push(`${acat}concat=n=${segments.length}:v=0:a=1[outa]`);
-    a.push(filters.join(';'), '-map', '[outv]', '-map', '[outa]',
+    a.push(filters.join(';'), '-map', vOut, '-map', '[outa]',
       '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-c:a', 'aac');
   } else {
-    a.push(filters.join(';'), '-map', '[outv]',
+    a.push(filters.join(';'), '-map', vOut,
       '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-an');
   }
   a.push(outPath);
@@ -348,12 +422,23 @@ const server = http.createServer(async (req, res) => {
     const outName = (spec.outName || 'clip.mp4').replace(/[^\w.\-]/g, '_');
     const outPath = path.join(entry.dir, outName);
     const captions = Array.isArray(spec.captions) ? spec.captions.filter(c => c.png) : [];
+    const reframe = needsOutputProcessing(spec.videoWidth, spec.videoHeight, spec.aspectFormat, spec.frameZoom)
+      ? {
+          srcW: spec.videoWidth,
+          srcH: spec.videoHeight,
+          format: spec.aspectFormat,
+          panX: spec.frameOffset?.x ?? 0,
+          panY: spec.frameOffset?.y ?? 0,
+          zoom: spec.frameZoom ?? 1,
+        }
+      : null;
     try {
-      console.log(`Export: ${outName} (${segments.length} segment(s)${captions.length ? `, ${captions.length} captions` : ''})`);
+      const reframeNote = reframe ? `, ${reframe.format} reframe` : '';
+      console.log(`Export: ${outName} (${segments.length} segment(s)${captions.length ? `, ${captions.length} captions` : ''}${reframeNote})`);
       if (captions.length) {
         // Pass 1: cut/concat to an intermediate clip.
         const basePath = path.join(entry.dir, `_base_${Date.now()}.mp4`);
-        runFfmpeg(buildExportArgs(entry.path, segments, basePath, spec.hasAudio));
+        runFfmpeg(buildExportArgs(entry.path, segments, basePath, spec.hasAudio, reframe));
         // Write caption PNGs, then Pass 2: overlay them timed on the base clip.
         const cues = captions.map((c, i) => {
           const file = path.join(entry.dir, `cap_${i}.png`);
@@ -364,7 +449,7 @@ const server = http.createServer(async (req, res) => {
         fs.rmSync(basePath, { force: true });
         cues.forEach(c => fs.rmSync(c.file, { force: true }));
       } else {
-        runFfmpeg(buildExportArgs(entry.path, segments, outPath, spec.hasAudio));
+        runFfmpeg(buildExportArgs(entry.path, segments, outPath, spec.hasAudio, reframe));
       }
       const data = fs.readFileSync(outPath);
       res.writeHead(200, {

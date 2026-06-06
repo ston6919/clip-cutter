@@ -39,9 +39,10 @@ Then open <http://localhost:4201>.
 
 1. **Upload** a video.
 2. **Transcribe** it (or restore a previous session for the same file).
-3. **AI Clips** (optional) — let the model pick clips from your guidance, or skip to manual.
-4. **Mark Clips** — drag across transcript words to assign colors; tick "subtitles" per clip.
-5. **Export** — rename files if you like, then export. Each color renders as one `.mp4`.
+3. **Options** — pick an output aspect ratio: 16:9, 9:16, or square.
+4. **AI Clips** (optional) — let the model pick clips from your guidance, or skip to manual.
+5. **Mark Clips** — drag across transcript words to assign colors; tick "subtitles" per clip.
+6. **Export** — rename files if you like, then export. Each color renders as one `.mp4`.
 
 ## Notes
 
