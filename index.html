@@ -1,0 +1,1765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clip Cutter — HyperFrames</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="config.js" onerror="window.DEEPGRAM_KEY=''"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d0d12; --surface: #16161f; --surface-raised: #1e1e2a;
+      --border: #2a2a3a; --border-hover: #3d3d55;
+      --purple: #7c3aed; --purple-light: #a78bfa; --purple-dim: rgba(124,58,237,0.18);
+      --text: #e8e8f0; --text-muted: #7a7a98; --text-dim: #4a4a65;
+      --green: #34d399; --yellow: #fbbf24;
+      --red: #f87171;
+    }
+    html, body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; font-size: 14px; height: 100%; overflow: hidden; }
+
+    .header { height: 56px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 20px; gap: 16px; flex-shrink: 0; }
+    .logo { width: 28px; height: 28px; background: var(--purple); border-radius: 7px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; color: #fff; flex-shrink: 0; }
+    .header-title { font-size: 14px; font-weight: 600; }
+    .stages { display: flex; gap: 2px; margin-left: 12px; }
+    .stage-btn { padding: 5px 14px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; border: none; background: transparent; color: var(--text-muted); transition: all 0.15s; display: flex; align-items: center; gap: 6px; }
+    .stage-btn:hover { background: var(--surface-raised); color: var(--text); }
+    .stage-btn.active { background: var(--purple-dim); color: var(--purple-light); }
+    .stage-btn.done { color: var(--green); }
+    .stage-btn.done .stage-dot { background: var(--green); }
+    .stage-btn.locked { opacity: 0.35; pointer-events: none; }
+    .stage-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); }
+    .stage-btn.active .stage-dot { background: var(--purple-light); }
+    .header-spacer { flex: 1; }
+    .video-label { font-size: 12px; color: var(--text-muted); background: var(--surface-raised); border: 1px solid var(--border); padding: 3px 10px; border-radius: 5px; max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .app { display: flex; flex-direction: column; height: 100vh; }
+    .main { flex: 1; overflow: hidden; display: flex; }
+    .stage { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+    .stage.active { display: flex; }
+
+    .center-panel { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 40px; width: 520px; display: flex; flex-direction: column; gap: 24px; }
+    .card h2 { font-size: 18px; font-weight: 600; }
+    .card p { color: var(--text-muted); font-size: 13px; line-height: 1.6; }
+
+    .drop-zone { border: 2px dashed var(--border); border-radius: 12px; padding: 40px 20px; text-align: center; cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .drop-zone:hover, .drop-zone.drag-over { border-color: var(--purple); background: var(--purple-dim); }
+    .drop-icon { font-size: 32px; }
+    .drop-zone-label { font-size: 13px; color: var(--text-muted); }
+    .drop-zone-label span { color: var(--purple-light); }
+
+    .video-preview { display: flex; gap: 12px; align-items: center; background: var(--surface-raised); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+    .video-thumb { width: 80px; height: 45px; background: #000; border-radius: 6px; object-fit: contain; flex-shrink: 0; }
+    .video-meta { flex: 1; min-width: 0; }
+    .video-name { font-size: 13px; font-weight: 500; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .video-dur { font-size: 12px; color: var(--text-muted); }
+
+    .btn { padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; font-family: inherit; transition: all 0.15s; }
+    .btn-primary { background: var(--purple); color: #fff; }
+    .btn-primary:hover { background: #6d28d9; }
+    .btn-primary:disabled { opacity: 0.4; pointer-events: none; }
+    .btn-ghost { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+    .btn-ghost:hover { border-color: var(--border-hover); color: var(--text); }
+    .btn-sm { padding: 5px 10px; font-size: 11px; }
+
+    .progress-bar { background: var(--surface-raised); border-radius: 99px; height: 6px; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--purple); border-radius: 99px; transition: width 0.3s ease; width: 0%; }
+    .progress-label { font-size: 12px; color: var(--text-muted); }
+    .transcript-result { display: flex; gap: 16px; align-items: center; background: var(--surface-raised); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+    .transcribe-error { display: none; background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.35); border-radius: 8px; padding: 10px 14px; font-size: 12px; color: var(--red); line-height: 1.5; }
+    .transcribe-error.visible { display: block; }
+
+    /* Form fields (AI guidance, keys) */
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+    .field input, .field textarea { background: var(--surface-raised); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 13px; padding: 10px 12px; font-family: inherit; resize: vertical; line-height: 1.5; }
+    .field input:focus, .field textarea:focus { outline: none; border-color: var(--purple); }
+    .result-icon { font-size: 24px; }
+    .result-meta strong { font-size: 13px; display: block; margin-bottom: 3px; }
+    .result-meta span { font-size: 12px; color: var(--text-muted); }
+
+    /* Clip editor layout */
+    .clip-layout { flex: 1; display: grid; grid-template-columns: 380px 1fr; overflow: hidden; }
+    .clip-left { display: flex; flex-direction: column; border-right: 1px solid var(--border); background: var(--surface); overflow: hidden; }
+    .video-player-wrap { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+    .video-el { width: 100%; border-radius: 8px; background: #000; display: block; max-height: 240px; object-fit: contain; }
+    .player-controls { display: flex; align-items: center; gap: 10px; }
+    .play-btn { width: 32px; height: 32px; border-radius: 50%; background: var(--purple); border: none; color: #fff; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .seek-bar { flex: 1; -webkit-appearance: none; height: 4px; border-radius: 2px; background: var(--border); cursor: pointer; }
+    .seek-bar::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: var(--purple); }
+    .time-label { font-size: 11px; color: var(--text-muted); min-width: 70px; text-align: right; }
+
+    .colors-panel { padding: 12px 16px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+    .colors-panel h4 { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .color-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .color-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 20px; font-size: 11px; font-weight: 500; cursor: pointer; border: 2px solid transparent; background: var(--surface-raised); color: var(--text); font-family: inherit; transition: all 0.12s; }
+    .color-chip:hover { border-color: var(--border-hover); }
+    .color-chip.active { border-color: #fff; box-shadow: 0 0 0 2px rgba(255,255,255,0.15); }
+    .color-swatch { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+    .chip-meta { color: var(--text-muted); font-weight: 400; }
+    .color-chip.eraser { color: var(--text-muted); }
+    .color-chip.eraser.active { border-color: var(--text-muted); }
+    .add-color-btn { width: 28px; height: 28px; border-radius: 50%; border: 1px dashed var(--border); background: transparent; color: var(--text-muted); cursor: pointer; font-size: 16px; line-height: 1; font-family: inherit; }
+    .add-color-btn:hover { border-color: var(--purple); color: var(--purple-light); }
+
+    .clips-summary { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+    .clips-summary h4 { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+    .clip-summary-item { background: var(--surface-raised); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
+    .clip-summary-item .clip-name-row { display: flex; align-items: center; gap: 6px; }
+    .clip-name-input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 5px 8px; border-radius: 5px; font-size: 12px; font-weight: 600; font-family: inherit; outline: none; min-width: 0; }
+    .clip-name-input:focus { border-color: var(--purple); }
+    .clip-summary-item .clip-meta { color: var(--text-muted); font-size: 11px; }
+    .summary-empty { font-size: 12px; color: var(--text-dim); }
+
+    .timeline-bar { height: 36px; padding: 0 16px; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--border); flex-shrink: 0; }
+    .timeline-label { font-size: 10px; color: var(--text-dim); flex-shrink: 0; }
+    .timeline-track { flex: 1; height: 12px; background: var(--surface-raised); border-radius: 6px; position: relative; overflow: hidden; border: 1px solid var(--border); }
+    .tl-segment { position: absolute; top: 0; height: 100%; border-radius: 2px; opacity: 0.85; }
+    .tl-playhead { position: absolute; top: -2px; width: 2px; height: calc(100% + 4px); background: var(--yellow); z-index: 2; pointer-events: none; }
+
+    .transcript-panel { display: flex; flex-direction: column; overflow: hidden; }
+    .transcript-toolbar { padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; gap: 10px; flex-shrink: 0; flex-wrap: wrap; }
+    .transcript-toolbar h3 { font-size: 13px; font-weight: 600; flex: 1; }
+    .transcript-body { flex: 1; overflow-y: auto; padding: 20px 20px 80px; line-height: 2; user-select: none; border-radius: 8px; transition: box-shadow 0.25s ease; }
+
+    .word { display: inline; padding: 2px 1px; border-radius: 3px; cursor: pointer; transition: background 0.08s; }
+    .word:hover { background: rgba(255,255,255,0.06); }
+    .word.current { outline: 2px solid var(--yellow); outline-offset: 1px; }
+    .word.selecting { background: rgba(96,165,250,0.55) !important; color: #fff !important; box-shadow: inset 0 0 0 2px #60a5fa; }
+    .word-space { display: inline; }
+
+    .sel-panel {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 16px 20px; min-width: 380px; max-width: 560px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6); z-index: 100;
+      display: none; flex-direction: column; gap: 12px;
+    }
+    .sel-panel.visible { display: flex; }
+    .sel-header { display: flex; justify-content: space-between; align-items: center; }
+    .sel-title { font-size: 13px; font-weight: 600; }
+    .sel-quote { font-size: 12px; color: var(--text-muted); font-style: italic; background: var(--surface-raised); border-radius: 6px; padding: 8px 10px; border: 1px solid var(--border); max-height: 56px; overflow: hidden; }
+    .sel-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .close-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; }
+
+    /* Export */
+    .export-card { width: 640px; }
+    .clip-export-list { display: flex; flex-direction: column; gap: 10px; }
+    .export-clip-row { display: flex; align-items: center; gap: 12px; background: var(--surface-raised); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+    .export-clip-row .clip-name { flex: 1; font-weight: 500; display: flex; align-items: center; gap: 8px; }
+    .export-clip-row .clip-stats { font-size: 12px; color: var(--text-muted); }
+    .export-progress { display: none; flex-direction: column; gap: 8px; }
+    .export-progress.visible { display: flex; }
+    .cmd-block { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-family: 'SF Mono', monospace; font-size: 11px; color: var(--text-muted); max-height: 120px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    .toast { position: fixed; bottom: 20px; right: 20px; z-index: 300; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); transform: translateY(20px); opacity: 0; transition: all 0.2s; pointer-events: none; }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.success { border-color: var(--green); color: var(--green); }
+    .toast.error { border-color: var(--red); color: var(--red); }
+
+    /* Session-restore modal */
+    .modal-overlay { position: fixed; inset: 0; z-index: 400; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; }
+    .modal-overlay.show { display: flex; }
+    .modal-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: 420px; max-width: 90vw; box-shadow: 0 12px 40px rgba(0,0,0,0.5); }
+    .modal-card h3 { font-size: 16px; margin: 0 0 8px; }
+    .modal-card p { font-size: 13px; color: var(--text-dim); line-height: 1.5; margin: 0 0 18px; }
+    .modal-card .modal-file { color: var(--text); font-weight: 600; }
+    .modal-actions { display: flex; gap: 10px; }
+    .modal-actions .btn { flex: 1; justify-content: center; }
+
+    /* Per-clip subtitle toggle */
+    .clip-sub-toggle { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; color: var(--text-dim); cursor: pointer; user-select: none; }
+    .clip-sub-toggle input { accent-color: var(--purple); width: 14px; height: 14px; cursor: pointer; }
+    .clip-sub-toggle:hover { color: var(--text); }
+
+    /* Export filename editing */
+    .export-name-input { background: var(--surface-raised); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; padding: 5px 8px; min-width: 140px; font-family: inherit; }
+    .export-name-input:focus { outline: none; border-color: var(--purple); }
+    .export-ext { color: var(--text-dim); font-size: 12px; }
+
+    /* Remove-color chips in the selection panel */
+    .sel-remove-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); }
+    .sel-remove-chip:hover { border-color: var(--red); color: var(--red); }
+
+    /* Live subtitle preview overlay on the clip-stage video */
+    .caption-preview { position: absolute; left: 50%; transform: translateX(-50%); bottom: 6%; max-width: 90%; background: #000; color: #fff; font-weight: 600; padding: 4px 12px; border-radius: 2px; font-size: 18px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; display: none; }
+    .caption-preview.show { display: block; }
+    .file-banner { display: none; background: rgba(251,146,60,0.12); border-bottom: 1px solid rgba(251,146,60,0.35); padding: 8px 20px; font-size: 12px; color: #fb923c; flex-shrink: 0; }
+    .file-banner.visible { display: block; }
+    .file-banner code { background: rgba(0,0,0,0.25); padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+    .server-badge { font-size: 11px; padding: 3px 10px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+    .server-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); }
+    .server-badge.ok { color: var(--green); border-color: rgba(52,211,153,0.35); background: rgba(52,211,153,0.08); }
+    .server-badge.ok .dot { background: var(--green); }
+    .server-badge.bad { color: #fb923c; border-color: rgba(251,146,60,0.35); background: rgba(251,146,60,0.08); }
+    .server-badge.bad .dot { background: #fb923c; }
+  </style>
+</head>
+<body>
+<div class="app">
+  <div class="file-banner" id="file-banner">
+    Opened as a file — run <code>node clip-cutter/serve.mjs</code> then open <code>http://localhost:4201</code>
+  </div>
+  <div class="file-banner" id="server-banner">
+    Wrong server — you need <code>node clip-cutter/serve.mjs</code> (not <code>npx serve</code>). Restart the server, then refresh this page.
+  </div>
+  <header class="header">
+    <div class="logo">HF</div>
+    <span class="header-title">Clip Cutter</span>
+    <div class="stages" id="stages">
+      <button class="stage-btn active" data-stage="upload" onclick="goToStage('upload')"><span class="stage-dot"></span> Upload</button>
+      <button class="stage-btn locked" data-stage="transcribe" onclick="goToStage('transcribe')"><span class="stage-dot"></span> Transcribe</button>
+      <button class="stage-btn locked" data-stage="ai" onclick="goToStage('ai')"><span class="stage-dot"></span> AI Clips</button>
+      <button class="stage-btn locked" data-stage="clip" onclick="goToStage('clip')"><span class="stage-dot"></span> Mark Clips</button>
+      <button class="stage-btn locked" data-stage="export" onclick="goToStage('export')"><span class="stage-dot"></span> Export</button>
+    </div>
+    <div class="header-spacer"></div>
+    <div class="server-badge" id="server-badge" title="Transcription server status"><span class="dot"></span><span id="server-badge-text">Checking…</span></div>
+    <div class="video-label" id="header-filename" style="display:none"></div>
+  </header>
+
+  <div class="main">
+    <!-- Upload -->
+    <div class="stage active" id="stage-upload">
+      <div class="center-panel">
+        <div class="card">
+          <div>
+            <h2>Upload your video</h2>
+            <p style="margin-top:6px">Upload a recording, transcribe it, then highlight parts of the script in different colors — each color becomes one exported clip.</p>
+          </div>
+          <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+            <div class="drop-icon">🎬</div>
+            <div class="drop-zone-label">Drop video here or <span>browse</span></div>
+            <div style="font-size:11px;color:var(--text-dim)">MP4, MOV, WebM — original aspect ratio kept</div>
+          </div>
+          <input type="file" id="file-input" accept="video/*" style="display:none">
+          <div id="video-preview" style="display:none">
+            <div class="video-preview">
+              <video class="video-thumb" id="thumb-video" muted></video>
+              <div class="video-meta">
+                <div class="video-name" id="preview-name"></div>
+                <div class="video-dur" id="preview-dur"></div>
+              </div>
+            </div>
+          </div>
+          <input type="hidden" id="api-key-input">
+          <button class="btn btn-primary" id="upload-next-btn" disabled onclick="goToStage('transcribe')">Continue to Transcribe →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Transcribe -->
+    <div class="stage" id="stage-transcribe">
+      <div class="center-panel">
+        <div class="card">
+          <div>
+            <h2>Transcribe</h2>
+            <p style="margin-top:6px">Word-level timestamps via Deepgram Nova-3. Uses ffmpeg on your Mac (via the Clip Cutter server) — long videos are auto-chunked.</p>
+          </div>
+          <div id="transcribe-error" class="transcribe-error"></div>
+          <div id="transcribe-result" style="display:none">
+            <div class="transcript-result">
+              <div class="result-icon">✅</div>
+              <div class="result-meta">
+                <strong id="result-words"></strong>
+                <span id="result-info"></span>
+              </div>
+            </div>
+          </div>
+          <div id="transcribe-progress" style="display:none">
+            <div class="progress-label" id="progress-label">Preparing…</div>
+            <div class="progress-bar" style="margin-top:8px"><div class="progress-fill" id="progress-fill"></div></div>
+          </div>
+          <div style="display:flex;gap:10px">
+            <button class="btn btn-ghost" onclick="goToStage('upload')">← Back</button>
+            <button class="btn btn-primary" id="transcribe-btn" onclick="startTranscription()" style="flex:1">Transcribe with Deepgram</button>
+          </div>
+          <button class="btn btn-primary" id="transcribe-next-btn" style="display:none" onclick="goToStage('ai')">Continue →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI auto-clips -->
+    <div class="stage" id="stage-ai">
+      <div class="center-panel">
+        <div class="card">
+          <div>
+            <h2>Auto-create clips with AI?</h2>
+            <p style="margin-top:6px">Let AI scan the transcript and pick clips for you based on your guidance. You'll land in the editor afterwards to review and tweak everything before exporting.</p>
+          </div>
+          <div id="ai-choice" style="display:flex;gap:10px">
+            <button class="btn btn-primary" style="flex:1" onclick="showAiGuidance()">✨ Yes, use AI</button>
+            <button class="btn btn-ghost" style="flex:1" onclick="goToStage('clip')">No, I'll do it manually</button>
+          </div>
+          <div id="ai-guidance-wrap" style="display:none;flex-direction:column;gap:14px">
+            <div class="field">
+              <label for="ai-guidance">How should the AI pick clips?</label>
+              <textarea id="ai-guidance" rows="5" placeholder="e.g. Pull out 3–5 punchy standalone clips for social. Each should be a complete thought, 15–45s. Prioritise strong hooks, surprising claims, and clear takeaways. Make one short 'intro' clip and one 'best advice' clip."></textarea>
+            </div>
+            <div class="field" id="ai-key-field" style="display:none">
+              <label for="ai-key-input">OpenRouter API key</label>
+              <input type="password" id="ai-key-input" placeholder="sk-or-… (saved locally)" autocomplete="off">
+            </div>
+            <div id="ai-error" class="transcribe-error"></div>
+            <div id="ai-progress" style="display:none">
+              <div class="progress-label" id="ai-progress-label">Asking the model…</div>
+              <div class="progress-bar" style="margin-top:8px"><div class="progress-fill" id="ai-progress-fill"></div></div>
+            </div>
+            <div style="display:flex;gap:10px">
+              <button class="btn btn-ghost" onclick="hideAiGuidance()">← Back</button>
+              <button class="btn btn-primary" id="ai-generate-btn" style="flex:1" onclick="generateAiClips()">Generate clips →</button>
+            </div>
+            <div style="font-size:11px;color:var(--text-dim)">Note: this replaces any current highlights. You can edit or clear them in the next step.</div>
+          </div>
+          <button class="btn btn-ghost" style="width:100%" onclick="goToStage('clip')">Skip to editor →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mark clips -->
+    <div class="stage" id="stage-clip">
+      <div class="clip-layout">
+        <div class="clip-left">
+          <div class="video-player-wrap">
+            <div class="video-stage" style="position:relative;display:flex;justify-content:center">
+              <video class="video-el" id="video-clip" playsinline></video>
+              <div class="caption-preview" id="caption-preview"></div>
+            </div>
+            <div class="player-controls">
+              <button class="play-btn" id="play-btn-clip" onclick="togglePlay()">▶</button>
+              <input type="range" class="seek-bar" id="seek-clip" min="0" step="0.1" value="0" oninput="seekTo(this.value)">
+              <span class="time-label" id="time-clip">0:00 / 0:00</span>
+            </div>
+          </div>
+          <div class="colors-panel">
+            <h4>Active color — drag words to assign</h4>
+            <div class="color-chips" id="color-chips"></div>
+          </div>
+          <div class="clips-summary">
+            <h4>Clips</h4>
+            <div id="clips-list"><div class="summary-empty">Highlight transcript words to build clips</div></div>
+          </div>
+          <div class="timeline-bar">
+            <span class="timeline-label">Timeline</span>
+            <div class="timeline-track" id="tl-clip"><div class="tl-playhead" id="tl-ph-clip"></div></div>
+          </div>
+        </div>
+        <div class="transcript-panel">
+          <div class="transcript-toolbar">
+            <h3>Transcript</h3>
+            <span style="font-size:11px;color:var(--text-dim)">Click word to jump · drag to highlight</span>
+            <button class="btn btn-ghost btn-sm" onclick="clearAllHighlights()">Clear all</button>
+            <button class="btn btn-primary btn-sm" onclick="goToStage('export')">Export →</button>
+          </div>
+          <div class="transcript-body" id="transcript-clip"></div>
+        </div>
+      </div>
+      <div class="sel-panel" id="sel-panel">
+        <div class="sel-header">
+          <span class="sel-title">Highlight selection</span>
+          <button class="close-btn" onclick="closeSelPanel()">✕</button>
+        </div>
+        <div class="sel-quote" id="sel-quote"></div>
+        <div style="font-size:12px;color:var(--text-muted)" id="sel-timing"></div>
+        <div class="sel-actions" id="sel-actions"></div>
+      </div>
+    </div>
+
+    <!-- Export -->
+    <div class="stage" id="stage-export">
+      <div class="center-panel">
+        <div class="card export-card">
+          <div>
+            <h2>Export clips</h2>
+            <p style="margin-top:6px">Each color exports as one video — non-contiguous highlights are stitched with hard cuts. Uses ffmpeg in your browser.</p>
+          </div>
+          <div class="clip-export-list" id="export-list"></div>
+          <div class="export-progress" id="export-progress">
+            <div class="progress-label" id="export-progress-label">Loading ffmpeg…</div>
+            <div class="progress-bar"><div class="progress-fill" id="export-progress-fill"></div></div>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-primary" id="export-all-btn" onclick="exportAllClips()">Export all clips</button>
+            <button class="btn btn-ghost" onclick="downloadExportSpec()">Download spec.json</button>
+            <button class="btn btn-ghost" onclick="copyFfmpegCommands()">Copy ffmpeg commands</button>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">Terminal fallback (if browser export fails on large files):</div>
+            <div class="cmd-block" id="ffmpeg-cmds"></div>
+          </div>
+          <button class="btn btn-ghost" style="width:100%" onclick="goToStage('clip')">← Back to clips</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="restore-modal">
+  <div class="modal-card">
+    <h3>Previous edit found</h3>
+    <p>You've worked on <span class="modal-file" id="restore-modal-file"></span> before. Restore that edit, or start over from scratch?</p>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="restore-modal-restore">Restore previous edit</button>
+      <button class="btn btn-ghost" id="restore-modal-fresh">Start from scratch</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Export uses native ffmpeg via the local server (/api/export) — no ffmpeg.wasm.
+
+// ══════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════
+const S = {
+  stage: 'upload',
+  videoFile: null,
+  videoURL: null,
+  videoDuration: 0,
+  hasAudio: true,
+  words: [],
+  colors: [
+    { id: 'red', name: 'red', exportName: 'red', hex: '#f87171' },
+    { id: 'blue', name: 'blue', exportName: 'blue', hex: '#60a5fa' },
+    { id: 'green', name: 'green', exportName: 'green', hex: '#34d399' },
+    { id: 'orange', name: 'orange', exportName: 'orange', hex: '#fb923c' },
+    { id: 'purple', name: 'purple', exportName: 'purple', hex: '#a78bfa' },
+  ],
+  activeColorId: 'red',
+  wordColors: [], // parallel array: array of colorIds per word index (a word can be in multiple clips)
+  dragStartIdx: -1,
+  dragEndIdx: -1,
+  isDragging: false,
+  pendingStartIdx: -1,
+  pendingEndIdx: -1,
+  colorCounter: 5,
+};
+
+let _lastWordIdx = -1;
+let _useServerTranscribe = false;
+
+const STAGE_ORDER = ['upload', 'transcribe', 'ai', 'clip', 'export'];
+const SESSION_KEY_PREFIX = 'clip-cutter-';
+
+// ══════════════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════════════
+function fmt(sec) {
+  if (!isFinite(sec)) return '0:00';
+  const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function uid() { return Math.random().toString(36).slice(2, 9); }
+
+function toast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `toast show ${type}`;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+function slug(name) {
+  return (name || 'clip').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'clip';
+}
+
+function getExportName(color) {
+  return (color?.exportName || color?.name || 'clip').trim() || 'clip';
+}
+
+function getExportFilename(color) {
+  return `${slug(getExportName(color))}.mp4`;
+}
+
+function normalizeColors(colors) {
+  return (colors || []).map(c => ({ ...c, exportName: c.exportName || c.name || 'clip', subtitles: !!c.subtitles }));
+}
+
+// Build one-line caption cues for a clip, on the EXPORT (concatenated) timeline.
+// Each segment's words are re-based to start at the segment's cumulative output offset.
+function buildCaptionsForColor(colorId) {
+  const segs = getColorSegments(colorId);
+  const cues = [];
+  const MAX_CHARS = 42;
+  let offset = 0;
+  for (const seg of segs) {
+    let lineWords = [], lineStart = null;
+    const flush = () => {
+      if (!lineWords.length) return;
+      const text = lineWords.map(w => w.t).join(' ');
+      const start = (lineStart - seg.start) + offset;
+      const end = (lineWords[lineWords.length - 1].e - seg.start) + offset;
+      cues.push({ start, end, text });
+      lineWords = []; lineStart = null;
+    };
+    for (let i = seg.startIdx; i <= seg.endIdx; i++) {
+      const w = S.words[i];
+      const t = w.punctuated_word || w.word;
+      const candidate = lineWords.map(x => x.t).concat(t).join(' ');
+      if (lineWords.length && candidate.length > MAX_CHARS) flush();
+      if (!lineWords.length) lineStart = w.start;
+      lineWords.push({ t, e: w.end });
+    }
+    flush();
+    offset += (seg.end - seg.start);
+  }
+  return cues;
+}
+
+// Render a single caption line to a PNG (white text on an opaque black box).
+// Returns base64 (no data: prefix) sized relative to the source video width.
+function renderCaptionPNG(text, videoW, videoH) {
+  const W = videoW || 1920, H = videoH || 1080;
+  const fontSize = Math.max(22, Math.round(H * 0.045));
+  const padX = Math.round(fontSize * 0.6), padY = Math.round(fontSize * 0.35);
+  const measure = document.createElement('canvas').getContext('2d');
+  const font = `600 ${fontSize}px Helvetica, Arial, sans-serif`;
+  measure.font = font;
+  const textW = Math.ceil(measure.measureText(text).width);
+  const boxW = Math.min(W, textW + padX * 2);
+  const boxH = fontSize + padY * 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = boxW; canvas.height = boxH;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, boxW, boxH);
+  ctx.fillStyle = '#fff';
+  ctx.font = font;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, boxW / 2, boxH / 2 + 1);
+  return canvas.toDataURL('image/png').split(',')[1];
+}
+
+function buildCaptionPayload(colorId) {
+  return buildCaptionsForColor(colorId).map(cue => ({
+    start: Math.round(cue.start * 1000) / 1000,
+    end: Math.round(cue.end * 1000) / 1000,
+    png: renderCaptionPNG(cue.text, S.videoWidth, S.videoHeight),
+  }));
+}
+
+// Preview caption lines on the ORIGINAL video timeline (only for subtitle-enabled colors).
+function buildPreviewCaptions() {
+  const lines = [];
+  const MAX_CHARS = 42;
+  S.colors.filter(c => c.subtitles).forEach(color => {
+    getColorSegments(color.id).forEach(seg => {
+      let lineWords = [], lineStart = null;
+      const flush = () => {
+        if (!lineWords.length) return;
+        lines.push({
+          start: lineStart,
+          end: lineWords[lineWords.length - 1].e,
+          text: lineWords.map(w => w.t).join(' '),
+        });
+        lineWords = []; lineStart = null;
+      };
+      for (let i = seg.startIdx; i <= seg.endIdx; i++) {
+        const w = S.words[i];
+        const t = w.punctuated_word || w.word;
+        const candidate = lineWords.map(x => x.t).concat(t).join(' ');
+        if (lineWords.length && candidate.length > MAX_CHARS) flush();
+        if (!lineWords.length) lineStart = w.start;
+        lineWords.push({ t, e: w.end });
+      }
+      flush();
+    });
+  });
+  lines.sort((a, b) => a.start - b.start);
+  return lines;
+}
+
+function invalidatePreviewCaptions() { S.previewCaptions = null; }
+
+function updateCaptionPreview(t) {
+  const el = document.getElementById('caption-preview');
+  if (!el) return;
+  if (S.previewCaptions == null) S.previewCaptions = buildPreviewCaptions();
+  const line = S.previewCaptions.find(l => t >= l.start && t <= l.end);
+  if (line) {
+    // Scale font to the displayed video height, mirroring the export (H * 0.045).
+    const vid = document.getElementById('video-clip');
+    const dispH = vid?.clientHeight || 0;
+    if (dispH) {
+      const fs = Math.max(9, dispH * 0.045);
+      el.style.fontSize = fs + 'px';
+      el.style.padding = `${Math.round(fs * 0.35)}px ${Math.round(fs * 0.6)}px`;
+    }
+    el.textContent = line.text;
+    el.classList.add('show');
+  } else {
+    el.classList.remove('show');
+  }
+}
+
+function escAttr(str) {
+  return (str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+function hexToRgba(hex, alpha) {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// ══════════════════════════════════════════════════════
+// SEGMENTS
+// ══════════════════════════════════════════════════════
+function getColorSegments(colorId) {
+  const segments = [];
+  let runStart = null;
+  for (let i = 0; i < S.words.length; i++) {
+    if (wordHasColor(i, colorId)) {
+      if (runStart === null) runStart = i;
+    } else if (runStart !== null) {
+      segments.push({
+        startIdx: runStart,
+        endIdx: i - 1,
+        start: S.words[runStart].start,
+        end: S.words[i - 1].end,
+      });
+      runStart = null;
+    }
+  }
+  if (runStart !== null) {
+    const endIdx = S.words.length - 1;
+    segments.push({
+      startIdx: runStart,
+      endIdx,
+      start: S.words[runStart].start,
+      end: S.words[endIdx].end,
+    });
+  }
+  return segments;
+}
+
+function getColorsInUse() {
+  return S.colors.filter(c => S.wordColors.some(wc => wc && wc.includes(c.id)));
+}
+
+// Helpers for the multi-color word model.
+function wordHasColor(idx, colorId) {
+  const arr = S.wordColors[idx];
+  return !!arr && arr.includes(colorId);
+}
+function ensureWordColors(len) {
+  S.wordColors = Array.from({ length: len }, (_, i) => Array.isArray(S.wordColors[i]) ? S.wordColors[i] : []);
+}
+
+function totalDurationForColor(colorId) {
+  return getColorSegments(colorId).reduce((acc, s) => acc + (s.end - s.start), 0);
+}
+
+// ══════════════════════════════════════════════════════
+// SESSION
+// ══════════════════════════════════════════════════════
+function sessionKey(file) {
+  return `${SESSION_KEY_PREFIX}${file.name}-${file.size}`;
+}
+
+function saveSession() {
+  if (!S.videoFile || !S.words.length) return;
+  const key = sessionKey(S.videoFile);
+  const data = {
+    words: S.words,
+    wordColors: S.wordColors,
+    colors: S.colors,
+    activeColorId: S.activeColorId,
+    colorCounter: S.colorCounter,
+    savedAt: Date.now(),
+    filename: S.videoFile.name,
+    filesize: S.videoFile.size,
+    duration: S.videoDuration,
+  };
+  try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) { console.warn(e); }
+}
+
+function tryRestoreSession(file) {
+  try {
+    const raw = localStorage.getItem(sessionKey(file));
+    if (!raw) return false;
+    const session = JSON.parse(raw);
+    if (!session.words?.length) return false;
+    S.words = session.words;
+    if (Array.isArray(session.wordColors)) {
+      S.wordColors = session.wordColors.map(a => Array.isArray(a) ? a : (a ? [a] : []));
+    } else if (Array.isArray(session.wordColor)) {
+      // Migrate old single-color sessions.
+      S.wordColors = session.wordColor.map(c => c ? [c] : []);
+    } else {
+      S.wordColors = [];
+    }
+    ensureWordColors(session.words.length);
+    if (session.colors?.length) S.colors = normalizeColors(session.colors);
+    S.activeColorId = session.activeColorId || S.colors[0]?.id;
+    S.colorCounter = session.colorCounter ?? S.colors.length;
+    document.getElementById('result-words').textContent = `${session.words.length} words (restored)`;
+    document.getElementById('result-info').textContent = 'Session restored — no re-transcription needed';
+    document.getElementById('transcribe-result').style.display = 'block';
+    document.getElementById('transcribe-next-btn').style.display = 'block';
+    document.getElementById('transcribe-btn').style.display = 'none';
+    unlockStagesUpTo('export');
+    renderColorChips();
+    renderTranscript();
+    renderClipsSummary();
+    renderTimeline();
+    return true;
+  } catch (e) { return false; }
+}
+
+// ══════════════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════════════
+window.goToStage = function goToStage(name) {
+  S.stage = name;
+  document.querySelectorAll('.stage').forEach(el => el.classList.remove('active'));
+  document.getElementById(`stage-${name}`).classList.add('active');
+  document.querySelectorAll('.stage-btn').forEach(btn => {
+    const s = btn.dataset.stage;
+    btn.classList.remove('active', 'done', 'locked');
+    const si = STAGE_ORDER.indexOf(s), ci = STAGE_ORDER.indexOf(name);
+    if (s === name) btn.classList.add('active');
+    else if (si < ci) btn.classList.add('done');
+    else if (!canAccessStage(s)) btn.classList.add('locked');
+  });
+  if (name === 'ai') resetAiStage();
+  if (name === 'clip') syncVideo();
+  if (name === 'export') renderExport();
+  closeSelPanel();
+};
+
+function canAccessStage(name) {
+  if (name === 'upload') return true;
+  if (name === 'transcribe') return !!S.videoFile;
+  return S.words.length > 0;
+}
+
+function unlockStagesUpTo(name) {
+  const idx = STAGE_ORDER.indexOf(name);
+  STAGE_ORDER.slice(0, idx + 1).forEach(s => {
+    document.querySelector(`.stage-btn[data-stage="${s}"]`)?.classList.remove('locked');
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// UPLOAD
+// ══════════════════════════════════════════════════════
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const apiInput = document.getElementById('api-key-input');
+apiInput.value = localStorage.getItem('deepgram_api_key') || window.DEEPGRAM_KEY || '';
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f?.type.startsWith('video/')) loadVideoFile(f);
+});
+fileInput.addEventListener('change', e => { if (e.target.files[0]) loadVideoFile(e.target.files[0]); });
+
+function loadVideoFile(file) {
+  S.videoFile = file;
+  S.videoURL = URL.createObjectURL(file);
+  const thumb = document.getElementById('thumb-video');
+  thumb.src = S.videoURL;
+  thumb.onloadedmetadata = () => {
+    S.videoDuration = thumb.duration;
+    S.videoWidth = thumb.videoWidth || 1920;
+    S.videoHeight = thumb.videoHeight || 1080;
+    document.getElementById('preview-dur').textContent = `${fmt(thumb.duration)} · ${(file.size / 1024 / 1024).toFixed(1)} MB`;
+  };
+  document.getElementById('preview-name').textContent = file.name;
+  document.getElementById('video-preview').style.display = 'block';
+  document.getElementById('header-filename').textContent = file.name;
+  document.getElementById('header-filename').style.display = 'block';
+  dropZone.querySelector('.drop-icon').textContent = '✅';
+  document.getElementById('upload-next-btn').disabled = false;
+  unlockStagesUpTo('transcribe');
+  if (hasSavedSession(file)) {
+    promptRestore(file);
+  }
+}
+
+function hasSavedSession(file) {
+  try {
+    const raw = localStorage.getItem(sessionKey(file));
+    if (!raw) return false;
+    return !!JSON.parse(raw)?.words?.length;
+  } catch (_) { return false; }
+}
+
+function resetEditState() {
+  S.words = [];
+  S.wordColors = [];
+  document.getElementById('transcribe-result').style.display = 'none';
+  document.getElementById('transcribe-next-btn').style.display = 'none';
+  const btn = document.getElementById('transcribe-btn');
+  btn.style.display = '';
+  btn.disabled = false;
+  btn.textContent = 'Transcribe with Deepgram';
+}
+
+function promptRestore(file) {
+  const modal = document.getElementById('restore-modal');
+  document.getElementById('restore-modal-file').textContent = file.name;
+  modal.classList.add('show');
+  document.getElementById('restore-modal-restore').onclick = () => {
+    modal.classList.remove('show');
+    if (tryRestoreSession(file)) {
+      toast(`Session restored — ${S.words.length} words.`, 'success');
+      goToStage('ai');
+    }
+  };
+  document.getElementById('restore-modal-fresh').onclick = () => {
+    modal.classList.remove('show');
+    localStorage.removeItem(sessionKey(file));
+    resetEditState();
+    toast('Starting a fresh edit — transcribe when ready.', 'success');
+  };
+}
+
+// ══════════════════════════════════════════════════════
+// TRANSCRIPTION (server-side ffmpeg + chunked Deepgram)
+// ══════════════════════════════════════════════════════
+
+function updateServerBadge() {
+  const badge = document.getElementById('server-badge');
+  const text = document.getElementById('server-badge-text');
+  const serverBanner = document.getElementById('server-banner');
+  // Transcription now runs fully in-browser — no server required.
+  badge.classList.remove('bad');
+  badge.classList.add('ok');
+  text.textContent = 'Local mode';
+  serverBanner.classList.remove('visible');
+}
+
+async function checkServerCapabilities() {
+  // Transcription is client-side now; nothing to probe.
+  updateServerBadge();
+}
+
+function showTranscribeError(msg) {
+  const el = document.getElementById('transcribe-error');
+  el.textContent = msg;
+  el.classList.add('visible');
+}
+
+function clearTranscribeError() {
+  const el = document.getElementById('transcribe-error');
+  el.textContent = '';
+  el.classList.remove('visible');
+}
+
+// ── Client-side audio extraction (browser AudioContext → 16kHz mono WAV) ──
+async function extractAudioWav(file, onProgress) {
+  onProgress(8, `Reading video (${(file.size / 1024 / 1024).toFixed(1)} MB)…`);
+  const arrayBuffer = await file.arrayBuffer();
+  onProgress(20, 'Decoding audio…');
+  const audioCtx = new AudioContext({ sampleRate: 16000 });
+  const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+  await audioCtx.close();
+  onProgress(40, 'Mixing to mono…');
+  const len = audioBuffer.length, pcm = new Float32Array(len);
+  for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+    const src = audioBuffer.getChannelData(ch);
+    for (let i = 0; i < len; i++) pcm[i] += src[i] / audioBuffer.numberOfChannels;
+  }
+  onProgress(50, 'Encoding WAV…');
+  const int16 = new Int16Array(len);
+  for (let i = 0; i < len; i++) int16[i] = Math.max(-32768, Math.min(32767, Math.round(pcm[i] * 32767)));
+  const SR = 16000, dataSize = int16.length * 2, buf = new ArrayBuffer(44 + dataSize), v = new DataView(buf);
+  const ws = (off, s) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
+  ws(0, 'RIFF'); v.setUint32(4, 36 + dataSize, true); ws(8, 'WAVE');
+  ws(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, SR, true); v.setUint32(28, SR * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  ws(36, 'data'); v.setUint32(40, dataSize, true);
+  new Int16Array(buf, 44).set(int16);
+  onProgress(55, `Audio extracted — ${(buf.byteLength / 1024 / 1024).toFixed(1)} MB WAV`);
+  return new Blob([buf], { type: 'audio/wav' });
+}
+
+// ── Client-side transcription: extract WAV in-browser, POST straight to Deepgram ──
+async function transcribeInBrowser(file, key, setP) {
+  const wavBlob = await extractAudioWav(file, setP);
+  const wavMB = (wavBlob.size / 1024 / 1024).toFixed(1);
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', 'https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&punctuate=true&utterances=false&words=true');
+    xhr.setRequestHeader('Authorization', `Token ${key}`);
+    xhr.setRequestHeader('Content-Type', 'audio/wav');
+    xhr.timeout = 600000;
+    xhr.upload.onprogress = e => {
+      if (!e.lengthComputable) return;
+      const sent = (e.loaded / 1024 / 1024).toFixed(1);
+      setP(55 + Math.round((e.loaded / e.total) * 30), `Uploading audio… ${sent}/${wavMB} MB`);
+    };
+    xhr.upload.onload = () => setP(87, 'Deepgram processing…');
+    xhr.onload = () => {
+      if (xhr.status < 200 || xhr.status >= 300) {
+        let msg = `Deepgram error ${xhr.status}`;
+        try { msg += ` — ${(JSON.parse(xhr.responseText).err_msg || '').slice(0, 120)}`; } catch (_) {}
+        reject(new Error(msg));
+        return;
+      }
+      setP(95, 'Parsing…');
+      let data; try { data = JSON.parse(xhr.responseText); } catch (_) { reject(new Error('Invalid Deepgram response')); return; }
+      const alt = data?.results?.channels?.[0]?.alternatives?.[0];
+      resolve({ words: alt?.words || [], transcript: alt?.transcript || '', hasAudio: true });
+    };
+    xhr.ontimeout = () => reject(new Error('Deepgram request timed out — try again'));
+    xhr.onerror = () => reject(new Error('Network error reaching Deepgram'));
+    xhr.send(wavBlob);
+  });
+}
+
+function completeTranscription(words, transcript, btn, setP) {
+  S.words = words;
+  S.wordColors = Array.from({ length: words.length }, () => []);
+  setP(100, 'Done!');
+  clearTranscribeError();
+  document.getElementById('result-words').textContent = `${words.length} words transcribed`;
+  document.getElementById('result-info').textContent = `${fmt(S.videoDuration)} · ${(transcript || '').slice(0, 80)}…`;
+  document.getElementById('transcribe-result').style.display = 'block';
+  document.getElementById('transcribe-progress').style.display = 'none';
+  document.getElementById('transcribe-next-btn').style.display = 'block';
+  btn.style.display = 'none';
+  unlockStagesUpTo('export');
+  renderColorChips();
+  renderTranscript();
+  saveSession();
+  toast('Transcription complete!', 'success');
+}
+
+window.startTranscription = async function startTranscription() {
+  if (!S.videoFile) {
+    toast('Re-upload your video first — refreshing the page clears it from memory.', 'error');
+    goToStage('upload');
+    return;
+  }
+  const key = apiInput.value.trim();
+  if (!key) { toast('Add your Deepgram API key in clip-cutter/config.js', 'error'); return; }
+  localStorage.setItem('deepgram_api_key', key);
+
+  const btn = document.getElementById('transcribe-btn');
+  btn.disabled = true;
+  btn.textContent = 'Transcribing…';
+  btn.style.display = '';
+  clearTranscribeError();
+  document.getElementById('transcribe-progress').style.display = 'block';
+
+  const setP = (pct, label) => {
+    document.getElementById('progress-fill').style.width = pct + '%';
+    document.getElementById('progress-label').textContent = label;
+  };
+
+  const onErr = msg => {
+    setP(0, '');
+    document.getElementById('transcribe-progress').style.display = 'none';
+    btn.disabled = false;
+    btn.textContent = 'Retry transcription';
+    btn.style.display = '';
+    showTranscribeError(msg);
+    toast(msg, 'error');
+    // Stay on transcribe step — keep prior words if user had a restored session
+    if (S.words.length) {
+      document.getElementById('transcribe-result').style.display = 'block';
+      document.getElementById('transcribe-next-btn').style.display = 'block';
+    }
+  };
+
+  try {
+    setP(5, 'Extracting audio…');
+    const result = await transcribeInBrowser(S.videoFile, key, setP);
+    if (!result.words?.length) {
+      onErr('No words returned — check the video has audible speech.');
+      return;
+    }
+    if (result.hasAudio != null) S.hasAudio = result.hasAudio;
+    setP(92, `Merging ${result.words.length} words…`);
+    completeTranscription(result.words, result.transcript, btn, setP);
+  } catch (e) {
+    onErr(`Transcription failed: ${e.message}`);
+  }
+};
+
+// ══════════════════════════════════════════════════════
+// VIDEO PLAYER
+// ══════════════════════════════════════════════════════
+function syncVideo() {
+  const vid = document.getElementById('video-clip');
+  if (!S.videoURL) return;
+  if (vid.src !== S.videoURL) vid.src = S.videoURL;
+  vid.onloadedmetadata = () => {
+    document.getElementById('seek-clip').max = vid.duration;
+    updateTimeLabel(0);
+  };
+  vid.ontimeupdate = () => {
+    const t = vid.currentTime;
+    document.getElementById('seek-clip').value = t;
+    updateTimeLabel(t);
+    updateCurrentWord(t);
+    updatePlayhead(t);
+    updateCaptionPreview(t);
+  };
+  vid.onplay = () => document.getElementById('play-btn-clip').textContent = '⏸';
+  vid.onpause = () => document.getElementById('play-btn-clip').textContent = '▶';
+}
+
+window.togglePlay = function togglePlay() {
+  const v = document.getElementById('video-clip');
+  v.paused ? v.play() : v.pause();
+};
+
+window.seekTo = function seekTo(val) {
+  document.getElementById('video-clip').currentTime = parseFloat(val);
+};
+
+function updateTimeLabel(t) {
+  document.getElementById('time-clip').textContent = `${fmt(t)} / ${fmt(S.videoDuration)}`;
+}
+
+function updatePlayhead(t) {
+  const ph = document.getElementById('tl-ph-clip');
+  if (ph && S.videoDuration) ph.style.left = (t / S.videoDuration * 100) + '%';
+}
+
+function updateCurrentWord(t) {
+  const idx = S.words.findIndex(w => t >= w.start && t <= w.end);
+  if (idx === _lastWordIdx) return;
+  _lastWordIdx = idx;
+  const container = document.getElementById('transcript-clip');
+  container.querySelectorAll('.word.current').forEach(el => el.classList.remove('current'));
+  if (idx >= 0) {
+    const el = container.querySelector(`[data-idx="${idx}"]`);
+    if (el) { el.classList.add('current'); el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// COLORS UI
+// ══════════════════════════════════════════════════════
+function renderColorChips() {
+  const wrap = document.getElementById('color-chips');
+  const chips = S.colors.map(c => {
+    const segs = getColorSegments(c.id).length;
+    const dur = totalDurationForColor(c.id);
+    const meta = segs ? `<span class="chip-meta"> · ${segs} part${segs !== 1 ? 's' : ''}, ${dur.toFixed(1)}s</span>` : '';
+    return `<button class="color-chip ${S.activeColorId === c.id ? 'active' : ''}" onclick="setActiveColor('${c.id}')" title="Use ${c.name}">
+      <span class="color-swatch" style="background:${c.hex}"></span><span>${c.name}</span>${meta}
+    </button>`;
+  }).join('');
+  const eraser = `<button class="color-chip eraser ${S.activeColorId === null ? 'active' : ''}" onclick="setActiveColor(null)">⌫ Eraser</button>`;
+  wrap.innerHTML = chips + eraser + `<button class="add-color-btn" onclick="addColor()" title="Add color">+</button>`;
+  applyTranscriptGlow();
+}
+
+function applyTranscriptGlow() {
+  const el = document.getElementById('transcript-clip');
+  if (!el) return;
+  const color = S.activeColorId ? S.colors.find(c => c.id === S.activeColorId) : null;
+  if (color) {
+    el.style.boxShadow = `inset 0 0 0 2px ${hexToRgba(color.hex, 0.55)}, inset 0 0 28px ${hexToRgba(color.hex, 0.28)}, 0 0 18px ${hexToRgba(color.hex, 0.25)}`;
+  } else {
+    el.style.boxShadow = '';
+  }
+}
+
+window.setActiveColor = function setActiveColor(id) {
+  S.activeColorId = id;
+  renderColorChips();
+};
+
+window.addColor = function addColor() {
+  S.colorCounter++;
+  const hue = (S.colorCounter * 137.508) % 360;
+  const hex = hslToHex(hue, 70, 58);
+  const name = `color-${S.colorCounter}`;
+  S.colors.push({ id: uid(), name, exportName: name, hex });
+  S.activeColorId = S.colors[S.colors.length - 1].id;
+  renderColorChips();
+  saveSession();
+  toast(`Added ${name}`, 'success');
+};
+
+function hslToHex(h, s, l) {
+  s /= 100; l /= 100;
+  const k = n => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = n => Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)))));
+  return `#${[f(0), f(8), f(4)].map(x => x.toString(16).padStart(2, '0')).join('')}`;
+}
+
+// ══════════════════════════════════════════════════════
+// TRANSCRIPT
+// ══════════════════════════════════════════════════════
+function renderTranscript() {
+  const container = document.getElementById('transcript-clip');
+  container.innerHTML = '';
+  S.words.forEach((w, i) => {
+    const span = document.createElement('span');
+    span.className = 'word';
+    span.dataset.idx = i;
+    span.textContent = w.punctuated_word || w.word;
+    applyWordStyle(span, i);
+    span.addEventListener('mousedown', e => { e.preventDefault(); startDrag(i); });
+    span.addEventListener('mouseover', () => { if (S.isDragging) continueDrag(i); });
+    span.addEventListener('mouseup', () => { if (S.isDragging) endDrag(); });
+    span.addEventListener('click', () => {
+      const vid = document.getElementById('video-clip');
+      if (vid) vid.currentTime = w.start;
+    });
+    container.appendChild(span);
+    const space = document.createElement('span');
+    space.className = 'word-space';
+    space.textContent = ' ';
+    container.appendChild(space);
+  });
+}
+
+function applyWordStyle(el, idx) {
+  const ids = S.wordColors[idx] || [];
+  const hexes = ids.map(id => S.colors.find(c => c.id === id)?.hex).filter(Boolean);
+  if (!hexes.length) {
+    el.style.background = '';
+    el.style.backgroundImage = '';
+    el.style.color = '';
+    return;
+  }
+  if (hexes.length === 1) {
+    el.style.backgroundImage = '';
+    el.style.background = hexToRgba(hexes[0], 0.35);
+    el.style.color = hexes[0];
+  } else {
+    // Multiple clips share this word — split the background into horizontal bands.
+    const step = 100 / hexes.length;
+    const stops = hexes.map((h, i) =>
+      `${hexToRgba(h, 0.5)} ${(i * step).toFixed(2)}% ${((i + 1) * step).toFixed(2)}%`
+    ).join(', ');
+    el.style.background = '';
+    el.style.backgroundImage = `linear-gradient(to bottom, ${stops})`;
+    el.style.color = '#fff';
+  }
+}
+
+function refreshTranscriptStyles() {
+  document.getElementById('transcript-clip')?.querySelectorAll('.word').forEach(el => {
+    applyWordStyle(el, parseInt(el.dataset.idx, 10));
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// DRAG SELECTION
+// ══════════════════════════════════════════════════════
+function startDrag(idx) {
+  S.isDragging = true;
+  S.dragStartIdx = S.dragEndIdx = idx;
+  updateSelectionHighlight();
+}
+
+function continueDrag(idx) {
+  S.dragEndIdx = idx;
+  updateSelectionHighlight();
+}
+
+function endDrag() {
+  S.isDragging = false;
+  const start = Math.min(S.dragStartIdx, S.dragEndIdx);
+  const end = Math.max(S.dragStartIdx, S.dragEndIdx);
+  S.pendingStartIdx = start;
+  S.pendingEndIdx = end;
+  showSelPanel(start, end);
+}
+
+document.addEventListener('mouseup', () => {
+  if (S.isDragging) {
+    S.isDragging = false;
+    const start = Math.min(S.dragStartIdx, S.dragEndIdx);
+    const end = Math.max(S.dragStartIdx, S.dragEndIdx);
+    S.pendingStartIdx = start;
+    S.pendingEndIdx = end;
+    showSelPanel(start, end);
+  }
+});
+
+function updateSelectionHighlight() {
+  const start = Math.min(S.dragStartIdx, S.dragEndIdx);
+  const end = Math.max(S.dragStartIdx, S.dragEndIdx);
+  document.getElementById('transcript-clip')?.querySelectorAll('.word').forEach(el => {
+    const idx = parseInt(el.dataset.idx, 10);
+    el.classList.toggle('selecting', idx >= start && idx <= end);
+  });
+}
+
+function clearSelectionHighlight() {
+  document.getElementById('transcript-clip')?.querySelectorAll('.word.selecting').forEach(el => el.classList.remove('selecting'));
+}
+
+function showSelPanel(start, end) {
+  const quote = S.words.slice(start, end + 1).map(w => w.punctuated_word || w.word).join(' ');
+  const t0 = S.words[start]?.start ?? 0;
+  const t1 = S.words[end]?.end ?? 0;
+  document.getElementById('sel-quote').textContent = `"${quote}"`;
+  document.getElementById('sel-timing').textContent = `${fmt(t0)} → ${fmt(t1)} (${(t1 - t0).toFixed(1)}s)`;
+  const actions = document.getElementById('sel-actions');
+  actions.innerHTML = '';
+  if (S.activeColorId) {
+    const color = S.colors.find(c => c.id === S.activeColorId);
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-primary';
+    btn.style.flex = '1';
+    btn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:${color?.hex}"></span> Mark as ${color?.name}</span>`;
+    btn.onclick = () => applyColorToSelection(S.activeColorId);
+    actions.appendChild(btn);
+  }
+
+  // Per-color "remove" chips for every color present anywhere in the selection.
+  const present = getColorsInSelection(start, end);
+  present.forEach(color => {
+    const chip = document.createElement('button');
+    chip.className = 'btn btn-ghost sel-remove-chip';
+    chip.innerHTML = `<span style="width:9px;height:9px;border-radius:50%;background:${color.hex};display:inline-block"></span> Remove ${color.name} <span style="opacity:0.6">✕</span>`;
+    chip.onclick = () => removeColorFromSelection(color.id);
+    actions.appendChild(chip);
+  });
+
+  const clearBtn = document.createElement('button');
+  clearBtn.className = 'btn btn-ghost';
+  clearBtn.textContent = present.length > 1 ? 'Clear all colors' : 'Clear highlight';
+  clearBtn.onclick = () => applyColorToSelection(null);
+  actions.appendChild(clearBtn);
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn btn-ghost';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.onclick = closeSelPanel;
+  actions.appendChild(cancelBtn);
+  document.getElementById('sel-panel').classList.add('visible');
+}
+
+function getColorsInSelection(start, end) {
+  const ids = new Set();
+  for (let i = start; i <= end; i++) (S.wordColors[i] || []).forEach(id => ids.add(id));
+  return S.colors.filter(c => ids.has(c.id));
+}
+
+function removeColorFromSelection(colorId) {
+  const { pendingStartIdx: start, pendingEndIdx: end } = S;
+  if (start < 0 || end < 0) return;
+  ensureWordColors(S.words.length);
+  for (let i = start; i <= end; i++) S.wordColors[i] = S.wordColors[i].filter(c => c !== colorId);
+  closeSelPanel();
+  refreshTranscriptStyles();
+  renderColorChips();
+  renderClipsSummary();
+  renderTimeline();
+  invalidatePreviewCaptions();
+  saveSession();
+  const label = S.colors.find(c => c.id === colorId)?.name || 'color';
+  toast(`Removed ${label} from selection`, 'success');
+}
+
+window.closeSelPanel = function closeSelPanel() {
+  document.getElementById('sel-panel').classList.remove('visible');
+  clearSelectionHighlight();
+};
+
+function applyColorToSelection(colorId) {
+  const { pendingStartIdx: start, pendingEndIdx: end } = S;
+  if (start < 0 || end < 0) return;
+  ensureWordColors(S.words.length);
+
+  let action = 'cleared';
+  if (colorId === null) {
+    // Eraser / Clear highlight → remove ALL colors from the selection.
+    for (let i = start; i <= end; i++) S.wordColors[i] = [];
+  } else {
+    // Toggle: if every selected word already has this color, remove it; otherwise add it.
+    let allHave = true;
+    for (let i = start; i <= end; i++) { if (!S.wordColors[i].includes(colorId)) { allHave = false; break; } }
+    if (allHave) {
+      for (let i = start; i <= end; i++) S.wordColors[i] = S.wordColors[i].filter(c => c !== colorId);
+      action = 'removed';
+    } else {
+      for (let i = start; i <= end; i++) if (!S.wordColors[i].includes(colorId)) S.wordColors[i].push(colorId);
+      action = 'added';
+    }
+  }
+
+  closeSelPanel();
+  refreshTranscriptStyles();
+  renderColorChips();
+  renderClipsSummary();
+  renderTimeline();
+  invalidatePreviewCaptions();
+  saveSession();
+  const label = colorId ? S.colors.find(c => c.id === colorId)?.name : '';
+  if (colorId === null) toast('Highlight cleared', 'success');
+  else toast(action === 'removed' ? `Removed from ${label}` : `Added to ${label}`, 'success');
+}
+
+window.clearAllHighlights = function clearAllHighlights() {
+  S.wordColors = Array.from({ length: S.words.length }, () => []);
+  refreshTranscriptStyles();
+  renderColorChips();
+  renderClipsSummary();
+  renderTimeline();
+  invalidatePreviewCaptions();
+  saveSession();
+  toast('All highlights cleared');
+};
+
+// ══════════════════════════════════════════════════════
+// AI AUTO-CLIPS (OpenRouter)
+// ══════════════════════════════════════════════════════
+function resetAiStage() {
+  document.getElementById('ai-choice').style.display = 'flex';
+  document.getElementById('ai-guidance-wrap').style.display = 'none';
+  document.getElementById('ai-progress').style.display = 'none';
+  clearAiError();
+}
+
+window.showAiGuidance = async function showAiGuidance() {
+  document.getElementById('ai-choice').style.display = 'none';
+  document.getElementById('ai-guidance-wrap').style.display = 'flex';
+  // Pre-fill key field if no server-side key is configured.
+  const keyInput = document.getElementById('ai-key-input');
+  keyInput.value = localStorage.getItem('openrouter_api_key') || window.OPENROUTER_KEY || '';
+  let serverHasKey = false;
+  try {
+    const d = await (await fetch('/api/health', { signal: AbortSignal.timeout(3000) })).json();
+    serverHasKey = !!d.openrouter;
+  } catch (_) {}
+  document.getElementById('ai-key-field').style.display = (serverHasKey || keyInput.value) ? 'none' : 'flex';
+};
+
+window.hideAiGuidance = function hideAiGuidance() { resetAiStage(); };
+
+function showAiError(msg) { const el = document.getElementById('ai-error'); el.textContent = msg; el.classList.add('visible'); }
+function clearAiError() { const el = document.getElementById('ai-error'); el.textContent = ''; el.classList.remove('visible'); }
+
+// Split the transcript into numbered sentence units for the model.
+function buildSentenceUnits() {
+  const units = [];
+  let startIdx = 0;
+  for (let i = 0; i < S.words.length; i++) {
+    const tok = S.words[i].punctuated_word || S.words[i].word || '';
+    if (/[.!?]["')\]]?$/.test(tok) || i === S.words.length - 1) {
+      units.push({
+        id: units.length, startIdx, endIdx: i,
+        text: S.words.slice(startIdx, i + 1).map(w => w.punctuated_word || w.word).join(' '),
+      });
+      startIdx = i + 1;
+    }
+  }
+  return units;
+}
+
+window.generateAiClips = async function generateAiClips() {
+  const guidance = document.getElementById('ai-guidance').value.trim();
+  const keyInput = document.getElementById('ai-key-input');
+  const pastedKey = keyInput.value.trim();
+  if (pastedKey) localStorage.setItem('openrouter_api_key', pastedKey);
+
+  const units = buildSentenceUnits();
+  if (!units.length) { showAiError('No transcript to analyse.'); return; }
+
+  const btn = document.getElementById('ai-generate-btn');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  clearAiError();
+  const prog = document.getElementById('ai-progress');
+  prog.style.display = 'block';
+  const setP = (p, l) => { document.getElementById('ai-progress-fill').style.width = p + '%'; document.getElementById('ai-progress-label').textContent = l; };
+  setP(25, 'Sending transcript to the model…');
+
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (pastedKey) headers['X-OpenRouter-Key'] = pastedKey;
+    const res = await fetch('/api/ai-clips', {
+      method: 'POST', headers,
+      body: JSON.stringify({
+        guidance,
+        model: window.OPENROUTER_MODEL || undefined,
+        units: units.map(u => ({ id: u.id, text: u.text })),
+      }),
+    });
+    setP(75, 'Reading the model’s picks…');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
+    const clips = Array.isArray(data.clips) ? data.clips : [];
+    if (!clips.length) throw new Error('The model returned no clips. Try rephrasing your guidance.');
+    setP(95, 'Applying clips…');
+    const applied = applyAiClips(clips, units);
+    setP(100, 'Done!');
+    toast(`AI created ${applied} clip${applied !== 1 ? 's' : ''} — review them below.`, 'success');
+    goToStage('clip');
+  } catch (e) {
+    showAiError(e.message);
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Generate clips →';
+    prog.style.display = 'none';
+  }
+};
+
+function applyAiClips(clips, units) {
+  const unitById = new Map(units.map(u => [u.id, u]));
+  ensureWordColors(S.words.length);
+  // Fresh slate for AI results.
+  S.wordColors = Array.from({ length: S.words.length }, () => []);
+
+  let applied = 0;
+  clips.forEach((clip, ci) => {
+    const ids = (clip.units || []).map(Number).filter(n => unitById.has(n));
+    if (!ids.length) return;
+    // Get or create a color for this clip.
+    let color = S.colors[ci];
+    if (!color) {
+      S.colorCounter++;
+      const hue = (S.colorCounter * 137.508) % 360;
+      color = { id: uid(), name: `color-${S.colorCounter}`, exportName: '', hex: hslToHex(hue, 70, 58) };
+      S.colors.push(color);
+    }
+    color.exportName = (clip.name || color.name || `clip-${ci + 1}`).trim();
+    ids.forEach(id => {
+      const u = unitById.get(id);
+      for (let i = u.startIdx; i <= u.endIdx; i++) {
+        if (!S.wordColors[i].includes(color.id)) S.wordColors[i].push(color.id);
+      }
+    });
+    applied++;
+  });
+
+  S.activeColorId = S.colors[0]?.id || null;
+  refreshTranscriptStyles();
+  renderColorChips();
+  renderClipsSummary();
+  renderTimeline();
+  invalidatePreviewCaptions();
+  saveSession();
+  return applied;
+}
+
+// ══════════════════════════════════════════════════════
+// SUMMARY + TIMELINE
+// ══════════════════════════════════════════════════════
+function renderClipsSummary() {
+  const list = document.getElementById('clips-list');
+  const inUse = getColorsInUse();
+  if (!inUse.length) {
+    list.innerHTML = '<div class="summary-empty">Highlight transcript words to build clips</div>';
+    return;
+  }
+  list.innerHTML = inUse.map(c => {
+    const segs = getColorSegments(c.id);
+    const dur = totalDurationForColor(c.id);
+    const preview = segs.slice(0, 2).map(s =>
+      S.words.slice(s.startIdx, s.endIdx + 1).map(w => w.word).slice(0, 5).join(' ')
+    ).join(' · ');
+    return `<div class="clip-summary-item">
+      <div class="clip-name-row">
+        <span class="color-swatch" style="background:${c.hex}"></span>
+        <input class="clip-name-input" type="text" value="${escAttr(getExportName(c))}" placeholder="Clip name…"
+          onblur="updateExportName('${c.id}', this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+      </div>
+      <div class="clip-meta" data-export-meta="${c.id}">${segs.length} segment${segs.length !== 1 ? 's' : ''} · ${dur.toFixed(1)}s · exports as ${getExportFilename(c)}</div>
+      <div class="clip-meta" style="font-style:italic">${preview}${segs.length > 2 ? '…' : ''}</div>
+      <label class="clip-sub-toggle">
+        <input type="checkbox" ${c.subtitles ? 'checked' : ''} onchange="toggleSubtitles('${c.id}', this.checked)">
+        <span>Burn in subtitles (white text, black background, one line)</span>
+      </label>
+    </div>`;
+  }).join('');
+}
+
+window.toggleSubtitles = function toggleSubtitles(colorId, on) {
+  const color = S.colors.find(c => c.id === colorId);
+  if (!color) return;
+  color.subtitles = !!on;
+  invalidatePreviewCaptions();
+  const v = document.getElementById('video-clip');
+  if (v) updateCaptionPreview(v.currentTime);
+  saveSession();
+};
+
+window.updateExportName = function updateExportName(colorId, value) {
+  const color = S.colors.find(c => c.id === colorId);
+  if (!color) return;
+  color.exportName = value.trim() || color.name;
+  saveSession();
+  const meta = document.querySelector(`[data-export-meta="${colorId}"]`);
+  if (meta) {
+    const segs = getColorSegments(colorId);
+    const dur = totalDurationForColor(colorId);
+    meta.textContent = `${segs.length} segment${segs.length !== 1 ? 's' : ''} · ${dur.toFixed(1)}s · exports as ${getExportFilename(color)}`;
+  }
+};
+
+function renderTimeline() {
+  const track = document.getElementById('tl-clip');
+  track.querySelectorAll('.tl-segment').forEach(el => el.remove());
+  if (!S.videoDuration) return;
+  S.colors.forEach(c => {
+    getColorSegments(c.id).forEach(seg => {
+      const el = document.createElement('div');
+      el.className = 'tl-segment';
+      el.style.background = c.hex;
+      el.style.left = (seg.start / S.videoDuration * 100) + '%';
+      el.style.width = Math.max(0.25, (seg.end - seg.start) / S.videoDuration * 100) + '%';
+      track.appendChild(el);
+    });
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// EXPORT
+// ══════════════════════════════════════════════════════
+function renderExport() {
+  const list = document.getElementById('export-list');
+  const inUse = getColorsInUse();
+  if (!inUse.length) {
+    list.innerHTML = '<div class="summary-empty">No clips marked yet — go back and highlight the transcript.</div>';
+    document.getElementById('export-all-btn').disabled = true;
+  } else {
+    list.innerHTML = inUse.map(c => {
+      const segs = getColorSegments(c.id);
+      const dur = totalDurationForColor(c.id);
+      return `<div class="export-clip-row">
+        <div class="clip-name">
+          <span class="color-swatch" style="background:${c.hex}"></span>
+          <input class="export-name-input" type="text" value="${escAttr(getExportName(c))}" placeholder="File name…"
+            onblur="renameExportClip('${c.id}', this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+          <span class="export-ext">.mp4</span>
+        </div>
+        <div class="clip-stats">${segs.length} part${segs.length !== 1 ? 's' : ''} · ${dur.toFixed(1)}s${c.subtitles ? ' · subtitles' : ''}</div>
+        <button class="btn btn-ghost btn-sm" onclick="exportOneClip('${c.id}')">Export</button>
+      </div>`;
+    }).join('');
+    document.getElementById('export-all-btn').disabled = false;
+  }
+  document.getElementById('ffmpeg-cmds').textContent = buildFfmpegCommands();
+}
+
+window.renameExportClip = function renameExportClip(colorId, value) {
+  const color = S.colors.find(c => c.id === colorId);
+  if (!color) return;
+  color.exportName = value.trim() || color.name;
+  saveSession();
+  renderExport();
+  renderClipsSummary();
+};
+
+function buildExportSpec() {
+  return {
+    version: '1.0',
+    videoFile: S.videoFile?.name || 'video.mp4',
+    hasAudio: S.hasAudio,
+    generatedAt: new Date().toISOString(),
+    clips: getColorsInUse().map(c => ({
+      colorId: c.id,
+      colorName: c.name,
+      exportName: getExportName(c),
+      filename: getExportFilename(c),
+      segments: getColorSegments(c.id).map(s => ({
+        start: Math.round(s.start * 1000) / 1000,
+        end: Math.round(s.end * 1000) / 1000,
+      })),
+    })),
+  };
+}
+
+window.downloadExportSpec = function downloadExportSpec() {
+  const spec = buildExportSpec();
+  const base = (S.videoFile?.name || 'video').replace(/\.[^.]+$/, '');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(spec, null, 2)], { type: 'application/json' }));
+  a.download = `${base}-clip-spec.json`;
+  a.click();
+  toast('Spec downloaded — run: node export-clips.mjs your-video.mp4 spec.json', 'success');
+};
+
+function buildFfmpegCommands() {
+  if (!S.videoFile) return '(upload a video first)';
+  const input = S.videoFile.name.replace(/'/g, "'\\''");
+  const inUse = getColorsInUse();
+  if (!inUse.length) return '(no clips marked)';
+  return inUse.map(c => {
+    const segs = getColorSegments(c.id);
+    const out = getExportFilename(c);
+    if (segs.length === 1) {
+      const { start, end } = segs[0];
+      return `ffmpeg -y -i '${input}' -ss ${start.toFixed(3)} -to ${end.toFixed(3)} -c copy '${out}'`;
+    }
+    const filters = [];
+    segs.forEach((s, i) => {
+      filters.push(`[0:v]trim=start=${s.start}:end=${s.end},setpts=PTS-STARTPTS[v${i}]`);
+      if (S.hasAudio) filters.push(`[0:a]atrim=start=${s.start}:end=${s.end},asetpts=PTS-STARTPTS[a${i}]`);
+    });
+    const vcat = segs.map((_, i) => `[v${i}]`).join('');
+    filters.push(`${vcat}concat=n=${segs.length}:v=1:a=0[outv]`);
+    if (S.hasAudio) {
+      const acat = segs.map((_, i) => `[a${i}]`).join('');
+      filters.push(`${acat}concat=n=${segs.length}:v=0:a=1[outa]`);
+      return `ffmpeg -y -i '${input}' -filter_complex "${filters.join(';')}" -map "[outv]" -map "[outa]" -c:v libx264 -preset fast -crf 18 -c:a aac '${out}'`;
+    }
+    return `ffmpeg -y -i '${input}' -filter_complex "${filters.join(';')}" -map "[outv]" -c:v libx264 -preset fast -crf 18 -an '${out}'`;
+  }).join('\n\n');
+}
+
+window.copyFfmpegCommands = function copyFfmpegCommands() {
+  navigator.clipboard.writeText(buildFfmpegCommands()).then(() => toast('Commands copied!', 'success'));
+};
+
+// Upload the video to the server once per session; reused for every clip export.
+let _exportVideoId = null;
+let _exportVideoUpload = null;
+async function ensureVideoUploaded() {
+  if (_exportVideoId) return _exportVideoId;
+  if (_exportVideoUpload) return _exportVideoUpload;
+  _exportVideoUpload = (async () => {
+    setExportProgress(4, 'Uploading video to local ffmpeg…');
+    const res = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/export-upload');
+      xhr.setRequestHeader('X-Filename', S.videoFile.name);
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      xhr.upload.onprogress = e => {
+        if (!e.lengthComputable) return;
+        setExportProgress(4 + Math.round((e.loaded / e.total) * 16),
+          `Uploading video… ${(e.loaded/1024/1024).toFixed(1)}/${(e.total/1024/1024).toFixed(1)} MB`);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try { resolve(JSON.parse(xhr.responseText)); } catch (_) { reject(new Error('Bad upload response')); }
+        } else {
+          let m = `Upload failed (${xhr.status})`;
+          try { m = JSON.parse(xhr.responseText).error || m; } catch (_) {}
+          reject(new Error(m));
+        }
+      };
+      xhr.onerror = () => reject(new Error('Lost connection to server — run: node clip-cutter/serve.mjs'));
+      xhr.send(S.videoFile);
+    });
+    _exportVideoId = res.id;
+    return _exportVideoId;
+  })();
+  try { return await _exportVideoUpload; }
+  catch (e) { _exportVideoUpload = null; throw e; }
+}
+
+function setExportProgress(pct, label) {
+  document.getElementById('export-progress').classList.add('visible');
+  document.getElementById('export-progress-fill').style.width = pct + '%';
+  document.getElementById('export-progress-label').textContent = label;
+}
+
+function hideExportProgress() {
+  document.getElementById('export-progress').classList.remove('visible');
+}
+
+function downloadBlob(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+async function exportColorClip(colorId) {
+  const color = S.colors.find(c => c.id === colorId);
+  const segments = getColorSegments(colorId);
+  if (!segments.length) throw new Error('No segments for this color');
+  const outName = getExportFilename(color);
+
+  const id = await ensureVideoUploaded();
+
+  setExportProgress(40, segments.length > 1
+    ? `Stitching ${segments.length} parts → ${outName}…`
+    : `Cutting ${outName}…`);
+
+  const res = await fetch('/api/export', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id,
+      outName,
+      hasAudio: S.hasAudio,
+      segments: segments.map(s => ({ start: s.start, end: s.end })),
+      captions: color?.subtitles ? buildCaptionPayload(colorId) : null,
+    }),
+  });
+  if (!res.ok) {
+    let m = `Server error ${res.status}`;
+    try { m = (await res.json()).error || m; } catch (_) {}
+    throw new Error(m);
+  }
+  setExportProgress(95, 'Downloading…');
+  const blob = await res.blob();
+  downloadBlob(blob, outName);
+  setExportProgress(100, 'Done!');
+  return outName;
+}
+
+function exportBlockedMessage() {
+  if (location.protocol === 'file:') {
+    return 'Export needs the local server. Run: node clip-cutter/serve.mjs — then open http://localhost:4201';
+  }
+  return null;
+}
+
+window.exportOneClip = async function exportOneClip(colorId) {
+  const blocked = exportBlockedMessage();
+  if (blocked) { toast(blocked, 'error'); return; }
+  try {
+    await exportColorClip(colorId);
+    toast('Clip exported!', 'success');
+  } catch (e) {
+    console.error(e);
+    toast(`Export failed: ${e.message}. Download spec.json and run export-clips.mjs instead.`, 'error');
+  } finally {
+    setTimeout(hideExportProgress, 1200);
+  }
+};
+
+window.exportAllClips = async function exportAllClips() {
+  const inUse = getColorsInUse();
+  if (!inUse.length) return;
+  const blocked = exportBlockedMessage();
+  if (blocked) { toast(blocked, 'error'); return; }
+  document.getElementById('export-all-btn').disabled = true;
+  try {
+    for (const c of inUse) {
+      await exportColorClip(c.id);
+    }
+    toast(`Exported ${inUse.length} clip${inUse.length !== 1 ? 's' : ''}!`, 'success');
+  } catch (e) {
+    console.error(e);
+    toast(`Export failed: ${e.message}`, 'error');
+  } finally {
+    document.getElementById('export-all-btn').disabled = false;
+    setTimeout(hideExportProgress, 1200);
+  }
+};
+
+// Expose for onclick handlers in dynamically built HTML
+window.buildFfmpegCommands = buildFfmpegCommands;
+
+if (location.protocol === 'file:') {
+  document.getElementById('file-banner').classList.add('visible');
+}
+
+checkServerCapabilities();
+renderColorChips();
+</script>
+</body>
+</html>

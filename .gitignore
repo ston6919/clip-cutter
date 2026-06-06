@@ -1,0 +1,12 @@
+# Secrets — never commit real API keys
+config.js
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+
+# Scratch
+*.log
+exports/
